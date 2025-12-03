@@ -1,30 +1,43 @@
-import { PrismaClient } from '@prisma/client'
+import express from 'express';
+import dotenv from 'dotenv';
+import authRoutes from './routes/auth.js';
 
-const prisma = new PrismaClient()
+dotenv.config();
 
-async function main() {
-  console.log('Prisma Client is ready!')
-  
-  // Example: Create a user
-  // const user = await prisma.user.create({
-  //   data: {
-  //     email: 'example@example.com',
-  //     name: 'Example User',
-  //   },
-  // })
-  // console.log('Created user:', user)
-  
-  // Example: Find all users
-  // const users = await prisma.user.findMany()
-  // console.log('All users:', users)
-}
+const app = express();
+const PORT = process.env.PORT || 8000;
 
-main()
-  .catch((e) => {
-    console.error(e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
+// Routes
+app.use('/api/auth', authRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`Register endpoint: http://localhost:${PORT}/api/auth/register`);
+});
