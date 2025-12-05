@@ -1,51 +1,47 @@
-import useScrollAnimation from "../hooks/useScrollAnimation";
-import { Crown } from "lucide-react";
+import { Medal } from "lucide-react";
 
 export default function TopEarners() {
-  const ref = useScrollAnimation();
-
   const earners = [
-    { name: "Abdulrahman Yusuf", amount: "₦150,000", rank: "1st" },
-    { name: "Blessing Chioma", amount: "₦120,000", rank: "2nd" },
-    { name: "Samuel Daniel", amount: "₦95,000", rank: "3rd" },
+    { name: "Sarah Johnson", amount: "₦150,000", rank: 1 },
+    { name: "Emeka Daniels", amount: "₦124,500", rank: 2 },
+    { name: "Aisha Bello", amount: "₦110,200", rank: 3 },
   ];
 
   return (
-    <section id="top-earners" ref={ref} className="animate-section py-20 px-6 bg-gray-50">
-      <div className="max-w-6xl mx-auto">
-
-        <h2 className="text-3xl font-bold text-center text-emerald-700 mb-8">
+    <section id="topEarners" className="py-20 px-6 bg-gray-50">
+      <div className="max-w-6xl mx-auto text-center">
+        <h2 className="text-3xl md:text-4xl font-bold text-emerald-700 mb-12">
           Top Earners of the Month
         </h2>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {earners.map((e, i) => (
+        <div className="grid md:grid-cols-3 gap-8">
+          {earners.map((e, index) => (
             <div
-              key={i}
-              className="bg-white p-6 rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition"
+              key={index}
+              className="bg-white border border-gray-200 shadow-md rounded-xl p-8 hover:shadow-xl transition"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-lg">{e.name}</h3>
-                  <p className="text-gray-600 mt-1">{e.amount}</p>
-                </div>
-                <Crown className={`w-8 h-8 ${
-                  i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-400" : "text-amber-700"
-                }`} />
+              <div className="flex justify-center mb-3">
+                <Medal
+                  size={40}
+                  className={
+                    e.rank === 1
+                      ? "text-yellow-500"
+                      : e.rank === 2
+                      ? "text-gray-400"
+                      : "text-amber-700"
+                  }
+                />
               </div>
-
-              <p className="text-sm text-right text-gray-500 mt-3">
-                Rank: <span className="font-bold">{e.rank}</span>
-              </p>
+              <h3 className="text-xl font-semibold text-gray-900">{e.name}</h3>
+              <p className="text-emerald-700 font-bold mt-1">{e.amount}</p>
+              <p className="text-gray-500 text-sm mt-2">Rank #{e.rank}</p>
             </div>
           ))}
         </div>
 
-        <div className="text-center mt-8">
-          <button className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow">
-            View Full Ranking
-          </button>
-        </div>
+        <button className="mt-8 px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md">
+          View Full Leaderboard
+        </button>
       </div>
     </section>
   );

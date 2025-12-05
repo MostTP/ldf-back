@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-// Components
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import Features from "./components/Features";
@@ -16,53 +15,39 @@ import Footer from "./components/Footer";
 import SignupModal from "./components/SignupModal";
 
 export default function App() {
-  // MODAL CONTROL
-  const [isSignupOpen, setIsSignupOpen] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
 
-  const openSignup = () => setIsSignupOpen(true);
-  const closeSignup = () => setIsSignupOpen(false);
+  const openSignup = () => setShowSignup(true);
+  const closeSignup = () => setShowSignup(false);
 
   return (
-    <div className="font-sans bg-white text-gray-900">
+    <div className="w-full overflow-x-hidden bg-white text-gray-800">
+      {/* Signup Modal */}
+      {showSignup && <SignupModal onClose={closeSignup} />}
 
-      {/* NAVBAR (Pass openSignup to handle Sign Up button) */}
-      <Navbar openSignup={openSignup} />
+      <Navbar onOpenSignup={openSignup} />
 
-      {/* HERO */}
-      <Hero openSignup={openSignup} />
+      <Hero onOpenSignup={openSignup} />
 
-      {/* FEATURES */}
       <Features />
 
-      {/* 3 STREAMS OF INCOME */}
       <Streams />
 
-      {/* PREMIUM INVESTMENT SECTION */}
       <PremiumInvestment />
 
-      {/* TOP EARNERS */}
       <TopEarners />
 
-      {/* COMMUNITY IMPACT */}
       <CommunityImpact />
 
-      {/* MATRIX & EARNINGS */}
       <MatrixEarnings />
 
-      {/* FAQ */}
       <FAQ />
 
-      {/* DISCLAIMER */}
       <Disclaimer />
 
-      {/* CTA SECTION */}
-      <CTA openSignup={openSignup} />
+      <CTA onOpenSignup={openSignup} />
 
-      {/* FOOTER */}
       <Footer />
-
-      {/* SIGNUP MODAL */}
-      <SignupModal isOpen={isSignupOpen} onClose={closeSignup} />
     </div>
   );
 }

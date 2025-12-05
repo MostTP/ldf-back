@@ -1,126 +1,124 @@
-import { X } from "lucide-react";
+import { X, User, Mail, Phone, Lock, BadgeCheck, KeyRound } from "lucide-react";
 
-export default function SignupModal({ isOpen, onClose }) {
-  if (!isOpen) return null;
-
+export default function SignupModal({ close }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl p-8 animate-fadeIn relative">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-start pt-10 md:pt-20 z-[2000] overflow-y-auto">
+      
+      <div className="bg-white w-[95%] md:w-[60%] lg:w-[45%] rounded-xl shadow-xl p-6 md:p-8 animate-fadeIn relative">
 
         {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-600 hover:text-gray-900"
+        <button 
+          onClick={close} 
+          className="absolute right-4 top-4 text-gray-500 hover:text-gray-700"
         >
-          <X className="w-6 h-6" />
+          <X size={24} />
         </button>
 
-        {/* Heading */}
-        <h2 className="text-3xl font-bold text-center text-emerald-700 mb-6">
-          Create Your Account
+        {/* Title */}
+        <h2 className="text-3xl font-extrabold text-gray-900 text-center leading-tight">
+          Start Your Journey Today!
         </h2>
 
+        <p className="text-gray-600 text-center mt-2">
+          Unlock the Masterclass and your opportunity for multiple streams of income—activated by your coupon code.
+        </p>
+
         {/* FORM */}
-        <form className="space-y-4">
+        <div className="mt-6 space-y-5">
 
-          {/* Coupon */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Coupon Code
-            </label>
-            <input
-              type="text"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="Enter your coupon code"
-            />
+          {/* Name Row */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <InputField icon={<User />} placeholder="First Name *" />
+            <InputField icon={<User />} placeholder="Last Name *" />
           </div>
 
-          {/* Full Name */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Full Name
-            </label>
-            <input
-              type="text"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="John Doe"
-            />
+          {/* Contact Row */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <InputField icon={<Mail />} placeholder="Email Address *" />
+            <InputField icon={<Phone />} placeholder="Phone Number (WhatsApp) *" />
           </div>
 
-          {/* Email */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="example@gmail.com"
-            />
-          </div>
+          {/* Username */}
+          <InputField 
+            icon={<BadgeCheck />} 
+            placeholder="Desired Username *"
+            note="Must be unique, 6–15 characters."
+          />
 
-          {/* Phone */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="080..."
-            />
-          </div>
+          {/* Default Plan */}
+          <InputField 
+            icon={<BadgeCheck />} 
+            placeholder="LDF-Starter"
+            note="Auto-filled if from an affiliate link."
+          />
 
-          {/* PASSWORD */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="********"
-            />
-          </div>
+          {/* Coupon Code */}
+          <InputField 
+            icon={<KeyRound />} 
+            placeholder="Activation Coupon Code (₦3,000) *"
+            note="The ₦3,000 coupon code purchased from your sponsor."
+          />
 
-          {/* CONFIRM PASSWORD */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-1">
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-600 outline-none"
-              placeholder="********"
-            />
-          </div>
+          {/* Passwords */}
+          <InputField 
+            icon={<Lock />} 
+            placeholder="Password *" 
+            note="Minimum 8 characters."
+          />
 
-          {/* Disclaimer Checkbox */}
-          <div className="flex items-start gap-3 mt-3">
-            <input type="checkbox" className="mt-1 w-5 h-5" />
+          <InputField 
+            icon={<Lock />} 
+            placeholder="Confirm Password *"
+          />
 
-            <p className="text-gray-600 text-sm leading-snug">
-              I have read and agree to the{" "}
-              <span className="text-emerald-700 font-semibold">Disclaimer</span> and{" "}
-              <span className="text-emerald-700 font-semibold">Terms & Conditions</span>.
-            </p>
-          </div>
+          {/* LEGAL ACCEPTANCE */}
+          <div className="mt-4">
+            <h3 className="font-semibold text-lg text-gray-900 mb-2">
+              Legal & Compliance Acceptance
+            </h3>
 
-          {/* WARNING */}
-          <div className="bg-amber-100 border border-amber-300 text-amber-800 text-sm p-3 rounded-lg">
-            Ensure all information provided is correct and belongs to you.
+            <Checkbox label="I have read and agree to the Terms & Conditions." />
+            <Checkbox label="I have read and understand the Risk Disclosure Statement regarding the non-guaranteed nature of earnings." />
+            <Checkbox label="I acknowledge that the coupon grants access to the LDF Digital Masterclass, is non-refundable, and that any earnings are performance-based." />
           </div>
 
           {/* SUBMIT BUTTON */}
-          <button
-            type="button"
-            className="w-full py-3 bg-emerald-700 text-white font-bold rounded-xl mt-4 hover:bg-emerald-800 transition"
-          >
-            Create Account
+          <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-md font-semibold shadow-md transition">
+            CREATE AND ACTIVATE ACCOUNT
           </button>
-        </form>
 
+        </div>
       </div>
     </div>
+  );
+}
+
+/* ------------------------- */
+/* REUSABLE INPUT COMPONENTS */
+/* ------------------------- */
+
+function InputField({ icon, placeholder, note }) {
+  return (
+    <div>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          {icon}
+        </span>
+        <input
+          placeholder={placeholder}
+          className="w-full border border-gray-300 rounded-md py-3 pl-10 pr-3 outline-none focus:ring-2 focus:ring-emerald-600 transition"
+        />
+      </div>
+      {note && <p className="text-xs text-gray-500 mt-1">{note}</p>}
+    </div>
+  );
+}
+
+function Checkbox({ label }) {
+  return (
+    <label className="flex items-start gap-3 text-gray-700 mt-2 cursor-pointer">
+      <input type="checkbox" className="mt-1 w-4 h-4 accent-emerald-600" />
+      <span>{label}</span>
+    </label>
   );
 }
