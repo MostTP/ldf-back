@@ -135,6 +135,80 @@
 				"description": "Login using username"
 			},
 			"response": []
+		},
+		{
+			"name": "Verify Email",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"token\": \"your_verification_token_here\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/auth/verify-email",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"auth",
+						"verify-email"
+					]
+				},
+				"description": "Verify email address using the verification token"
+			},
+			"response": []
+		},
+		{
+			"name": "Resend Verification Email",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"john@example.com\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/auth/resend-verification",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"auth",
+						"resend-verification"
+					]
+				},
+				"description": "Resend email verification token"
+			},
+			"response": []
 		}
 	],
 	"variable": [

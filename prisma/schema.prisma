@@ -10,6 +10,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum EarningType {
+  REFERRAL_BONUS
+  MATRIX_LEVEL_1
+  MATRIX_LEVEL_2
+  MATRIX_LEVEL_3
+  MATRIX_LEVEL_4
+  MATRIX_LEVEL_5
+  GLOBAL_POOL_ROI
+  PREMIUM_ROI
+  OPERATIONS_COST
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum InvestmentTier {
+  BASIC
+  PREMIUM
+}
+
 model User {
   id                Int      @id @default(autoincrement())
   firstName         String
@@ -19,17 +43,108 @@ model User {
   username          String   @unique
   bankName          String
   bankAccount       String
-  sponsor           String?
+  sponsorId         Int?
+  sponsor           User?    @relation("UserSponsor", fields: [sponsorId], references: [id])
+  referrals         User[]   @relation("UserSponsor")
   couponCode        String
   passwordHash      String
   termsAccepted     Boolean  @default(false)
   riskDisclosureAccepted Boolean @default(false)
   couponAcknowledged Boolean @default(false)
+  emailVerified     Boolean  @default(false)
+  emailVerificationToken String?
+  emailVerificationTokenExpiry DateTime?
+  isAgent           Boolean  @default(false)
+  isPremium         Boolean  @default(false)
+  kycVerified       Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  // Relations
+  earnings          Earning[]
+  coupons           Coupon[]
+  investments       Investment[]
+  withdrawals       Withdrawal[]
 
   @@index([email])
   @@index([username])
   @@index([phone])
+  @@index([sponsorId])
+  @@index([isAgent])
+  @@index([isPremium])
+}
+
+model Coupon {
+  id                Int      @id @default(autoincrement())
+  code              String   @unique
+  agentId           Int
+  agent             User     @relation(fields: [agentId], references: [id])
+  usedBy            Int?
+  usedByUser        User?    @relation("CouponUsedBy", fields: [usedBy], references: [id])
+  isUsed            Boolean  @default(false)
+  usedAt            DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([code])
+  @@index([agentId])
+  @@index([isUsed])
+}
+
+model Earning {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal  @db.Decimal(10, 2)
+  type              EarningType
+  description       String?
+  referrerId        Int?
+  referrer          User?    @relation("EarningReferrer", fields: [referrerId], references: [id])
+  sponsorId         Int?
+  sponsor           User?    @relation("EarningSponsor", fields: [sponsorId], references: [id])
+  activationId      Int?
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([referrerId])
+  @@index([sponsorId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Investment {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal  @db.Decimal(10, 2)
+  tier              InvestmentTier
+  paymentReference  String?  @unique
+  status            String   @default("pending")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tier])
+  @@index([status])
+}
+
+model Withdrawal {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("NGN")
+  bankName          String
+  bankAccount       String
+  accountName       String?
+  status            WithdrawalStatus @default(PENDING)
+  paymentReference  String?
+  rejectionReason   String?
+  processedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 

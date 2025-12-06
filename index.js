@@ -1,6 +1,11 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
+import activationRoutes from './routes/activation.js';
+import withdrawalRoutes from './routes/withdrawal.js';
+import webhookRoutes from './routes/webhook.js';
+import agentRoutes from './routes/agent.js';
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 
@@ -21,6 +26,11 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/activate', activationRoutes);
+app.use('/api/withdraw', withdrawalRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/agent', agentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -39,5 +49,11 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Register endpoint: http://localhost:${PORT}/api/auth/register`);
+  console.log(`\nAPI Endpoints:`);
+  console.log(`  Auth: http://localhost:${PORT}/api/auth/*`);
+  console.log(`  Activation: http://localhost:${PORT}/api/activate`);
+  console.log(`  Withdrawal: http://localhost:${PORT}/api/withdraw/*`);
+  console.log(`  Webhooks: http://localhost:${PORT}/api/webhooks/*`);
+  console.log(`  Agent: http://localhost:${PORT}/api/agent/*`);
+  console.log(`  Admin: http://localhost:${PORT}/api/admin/*`);
 });

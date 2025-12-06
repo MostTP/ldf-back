@@ -1,151 +1,252 @@
-# Node.js with Prisma ORM - LDF Registration API
+Below is a **clean, structured, developer-friendly daily execution ticket** you can use to guide delivery of the described LDF backend architecture and logic.
+It is broken into **phases, deliverables, acceptance criteria, and required artifacts** — just like an engineering sprint ticket.
 
-This project provides a secure registration endpoint for the LDF Digital Masterclass platform.
+---
 
-## Setup
+# ✅ **LDF BACKEND — DAILY EXECUTION TICKET**
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+## **📌 Day Title:**
 
-2. Generate Prisma Client:
-   ```bash
-   npm run prisma:generate
-   ```
+**Implement Core LDF Backend Logic (Activation, Earnings Engine, Ledgers & Integrations)**
 
-3. Push schema to database (or create migration):
-   ```bash
-   npm run prisma:push
-   # OR
-   npm run prisma:migrate
-   ```
+## **📌 Objective for Today:**
 
-4. Start the server:
-   ```bash
-   npm run dev
-   ```
+Deliver the foundational components of the **Earnings Engine**, **Activation Flow**, and **Financial Ledger Logic** for the LDF platform, ensuring all operations run through **atomic database transactions** and preserve financial integrity.
 
-## API Endpoints
+---
 
-### POST `/api/auth/register`
+# 🧩 **TASK STRUCTURE**
 
-Register a new user account.
+---
 
-**Request Body:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "email": "john.doe@example.com",
-  "phone": "+2348012345678",
-  "username": "johndoe123",
-  "bankName": "First Bank",
-  "bankAccount": "1234567890",
-  "sponsor": "sponsor123",
-  "couponCode": "COUPON123",
-  "password": "SecurePass123",
-  "confirmPassword": "SecurePass123",
-  "termsAccepted": "true",
-  "riskDisclosureAccepted": "true",
-  "couponAcknowledged": "true"
-}
-```
+## **1. Data Layer Finalization (Prisma Schema Review & Adjustments)**
 
-**Success Response (201):**
-```json
-{
-  "success": true,
-  "message": "Account created and activated successfully",
-  "user": {
-    "id": 1,
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john.doe@example.com",
-    "username": "johndoe123",
-    "createdAt": "2024-12-03T15:00:00.000Z"
-  }
-}
-```
+### **Tasks**
 
-**Error Response (400/409):**
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": [...]
-}
-```
+* Verify schema for: `User`, `Earning`, `Coupon`, `Investment`, `Withdrawal`.
+* Ensure all foreign keys, cascading rules, and unique constraints are correct.
+* Add missing indexes (referrerId, sponsorId, userId on Earning, couponCode, etc.).
+* Implement enums where needed (EarningType, WithdrawalStatus, InvestmentTier).
 
-### POST `/api/auth/login`
+### **Deliverables**
 
-Login with email or username.
+* Updated `/prisma/schema.prisma`
+* Successful `npx prisma migrate dev`
 
-**Request Body:**
-```json
-{
-  "identifier": "john@example.com",
-  "password": "SecurePass123"
-}
-```
+### **Acceptance Criteria**
 
-**Success Response (200):**
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "user": {
-    "id": 1,
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john@example.com",
-    "username": "johndoe123",
-    "phone": "+2348012345678",
-    "createdAt": "2024-12-03T15:00:00.000Z"
-  }
-}
-```
+* Schema compiles without warnings
+* All tables and relations match the business logic described
 
-**Error Response (401):**
-```json
-{
-  "success": false,
-  "message": "Invalid email/username or password"
-}
-```
+---
 
-**Note:** The `identifier` field accepts either email address or username.
+## **2. Implement Coupon Activation Flow (₦3,000 Activation Route)**
 
-## Security Features
+### **Tasks**
 
-- ✅ Password hashing with bcrypt (10 salt rounds)
-- ✅ Input validation and sanitization
-- ✅ SQL injection protection (via Prisma)
-- ✅ Duplicate user detection (email, username, phone)
-- ✅ Password strength requirements
-- ✅ Security headers (XSS protection, content type sniffing prevention)
-- ✅ No sensitive data in responses (password hash excluded)
-- ✅ Secure password verification with bcrypt comparison
-- ✅ Generic error messages to prevent user enumeration
+* Build `/api/activate` controller/service.
+* Validate coupon:
 
-## Validation Rules
+  * Exists
+  * Not used
+  * Owned by an authenticated Agent
+* Create activation record & mark coupon as used.
+* Begin 1 transaction (`prisma.$transaction`).
 
-- **Username**: 6-15 characters, alphanumeric and underscores only
-- **Password**: Minimum 8 characters, must contain uppercase, lowercase, and number
-- **Email**: Valid email format
-- **Phone**: Valid phone number format
-- **Bank Account**: Numbers only
-- **All required fields**: Must be provided
-- **Legal checkboxes**: Must be accepted
+### **Deliverables**
 
-## Database
+* Activation Service in `/services/activationService.js`
+* Validation middleware
 
-The project uses PostgreSQL. Update the `DATABASE_URL` in `.env` to connect to your database.
+### **Acceptance Criteria**
 
-## Available Scripts
+* Activation must fail gracefully outside transaction
+* Coupon cannot be reused
 
-- `npm run dev` - Start the development server
-- `npm run prisma:generate` - Generate Prisma Client
-- `npm run prisma:migrate` - Create and apply database migrations
-- `npm run prisma:studio` - Open Prisma Studio (database GUI)
-- `npm run prisma:push` - Push schema changes to database without migrations
+---
+
+## **3. Build the Earnings Engine (triggerActivationPayouts)**
+
+### **Tasks**
+
+* Implement main payout engine inside a **single transaction**:
+
+  1. **Referral Bonus:** ₦1,000 → direct referrer
+  2. **Global Pool Allocation:** ₦1,000 → pool ledger
+  3. **Operations Cost:** ₦500 → internal ledger
+  4. **Matrix Split:** Identify 5-level upline and credit:
+
+     * Level 1 → ₦200
+     * Level 2 → ₦100
+     * Level 3 → ₦70
+     * Level 4 → ₦60
+     * Level 5 → ₦70
+
+* Ensure each payout is recorded as *separate Earning entries*.
+
+### **Deliverables**
+
+* `/services/earningsEngine.js`
+* `/services/matrixService.js`
+
+### **Acceptance Criteria**
+
+* If any payout fails → rollback everything
+* All earning entries reflect exact sums
+* Upline tracing returns correct 5-level hierarchy
+
+---
+
+## **4. Implement Matrix Upline Retrieval Logic**
+
+### **Tasks**
+
+* Build recursive or iterative trace function:
+
+  * Input: newUserId
+  * Output: array of up to 5 sponsor IDs
+* Consider missing levels (null sponsor should break the chain).
+
+### **Deliverables**
+
+* `getUplineHierarchy(userId)` utility
+
+### **Acceptance Criteria**
+
+* Function always returns stable 0–5 IDs
+* Works even for deep trees (stress-tested)
+
+---
+
+## **5. Integrate Payment Gateway Webhooks (Premium Tier Activation)**
+
+### **Tasks**
+
+* Create `/webhooks/payment` handler
+* Verify:
+
+  * Signature
+  * Payment status
+  * Correct amount
+* On success:
+
+  * Create Investment record
+  * Flip isPremium = true
+  * Write ledger entry
+
+### **Deliverables**
+
+* `/controllers/webhookController.js`
+
+### **Acceptance Criteria**
+
+* Webhook idempotency implemented
+* Only verified payments unlock Premium tier
+* Invalid webhook bodies are rejected (403/400)
+
+---
+
+## **6. Withdrawal Engine (Multi-Currency)**
+
+### **Tasks**
+
+* Build `/api/withdraw` route.
+* Validate:
+
+  * User balance ≥ requested amount
+  * User KYC + bank/mobile money details
+* Trigger payment gateway transfer API.
+
+### **Deliverables**
+
+* `/services/withdrawalService.js`
+
+### **Acceptance Criteria**
+
+* Creates Withdrawal record (Pending → Approved → Paid)
+* Only server can update payout to “Paid” (after gateway callback)
+
+---
+
+## **7. Automation Layer (Cron Jobs)**
+
+### **Tasks**
+
+* Add schedulers:
+
+  1. **Monthly Global Pool ROI distribution**
+  2. **Quarterly Premium ROI distribution**
+* Create separate worker file (`cron/ledgerJobs.js`)
+
+### **Deliverables**
+
+* Working cron job runners
+
+### **Acceptance Criteria**
+
+* Tasks are isolated from user API
+* All payouts recorded as Earning transactions
+
+---
+
+## **8. Agent Tools & Admin Controls**
+
+### **Tasks**
+
+* Build:
+
+  * Coupon generation endpoint
+  * Admin upgrade endpoint (isAgent flag)
+* Add rate-limiting where needed
+
+### **Deliverables**
+
+* `/controllers/agentController.js`
+* `/controllers/adminController.js`
+
+### **Acceptance Criteria**
+
+* Coupons generated with UUID / secure pattern
+* History and ownership tracked properly
+
+---
+
+# 📌 **End-of-Day Checklist**
+
+Before closing this ticket, ensure:
+
+### ✔ All routes tested in Postman
+
+### ✔ All major services wrapped in try/catch and Prisma transactions
+
+### ✔ All financial entries recorded in Earning table
+
+### ✔ Error responses follow consistent format
+
+### ✔ Webhook endpoint tested with mock payload
+
+### ✔ Database rollback tested intentionally
+
+---
+
+# 📌 **Expected Output (By Day’s End)**
+
+A stable backend foundation where:
+
+* Activation works end-to-end
+* Payout engine is functional
+* Upline logic distributes correctly
+* Webhooks update investments
+* Ledgers are consistent and auditable
+* No double credits or duplicate payouts
+* Cron jobs are stubbed and ready for production
+
+---
+
+If you want, I can also generate:
+
+✅ API documentation for all routes
+✅ Folder structure template
+✅ Flow diagrams for each subsystem
+✅ Test cases for each process
+Just tell me which you want.
