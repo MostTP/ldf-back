@@ -1,22 +1,32 @@
-export default function CTA({ openSignup }) {
+// src/components/CTA.jsx
+import useScrollAnimation from "../hooks/useScrollAnimation";
+
+export default function CTA({ onOpenSignup }) {
+  const ref = useScrollAnimation();
+
   return (
-    <section className="py-20 bg-emerald-700 text-white text-center">
+    <section 
+      id="cta"
+      ref={ref} 
+      // Use the dark theme for high contrast before the footer
+      className="animate-section py-20 bg-[--dark] text-white text-center"
+    >
       <div className="max-w-4xl mx-auto px-6">
 
-        <h2 className="text-4xl font-extrabold mb-4">
+        <h2 className="text-4xl md:text-5xl font-extrabold mb-4">
           Start Your Journey Today
         </h2>
 
-        <p className="text-lg opacity-90 mb-8">
+        <p className="text-lg opacity-80 mb-10 max-w-2xl mx-auto">
           Join thousands already building streams of income with Little Drop Fund.
-          A one-time activation can unlock lifetime opportunities.
+          A one-time activation of ₦3,000 unlocks lifetime opportunities and product access.
         </p>
 
         <button
-          onClick={openSignup}
-          className="px-10 py-4 bg-white text-emerald-700 font-bold rounded-xl shadow-lg text-lg hover:bg-emerald-50 transition"
+          onClick={onOpenSignup}
+          className="px-10 py-4 bg-white text-[--emerald] font-bold rounded-lg shadow-xl shadow-green-500/20 text-xl hover:bg-gray-100 transition-fast"
         >
-          Join Now
+          Unlock Masterclass & Join Now (₦3,000)
         </button>
       </div>
     </section>

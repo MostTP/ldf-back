@@ -1,3 +1,4 @@
+// src/components/FAQ.jsx
 import useScrollAnimation from "../hooks/useScrollAnimation";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
@@ -10,32 +11,32 @@ export default function FAQ() {
     {
       question: "What is Little Drop Fund?",
       answer:
-        "Little Drop Fund is a community-driven earning platform where members earn through referrals, matrix bonuses, and community profit sharing."
+        "Little Drop Fund is a community-driven earning platform where members earn through referrals, matrix bonuses, and community profit sharing, backed by a high-value Stock Market Masterclass."
     },
     {
       question: "How much is activation?",
       answer:
-        "You activate your account with a one-time ₦3,000 coupon. No renewal fees are required."
+        "You activate your account with a one-time ₦3,000 coupon. This is the only cost, and it grants you lifetime access to the product and earning system."
     },
     {
       question: "How do I earn?",
       answer:
-        "You earn through direct referrals (₦1,500 each), indirect matrix bonuses, leadership rewards, and community monthly pool distribution."
+        "You earn through three main streams: 1) Direct Referrals (₦1,000 instant bonus), 2) Matrix Bonuses (up to 5 levels deep), and 3) Global Pool Payouts (monthly dividends for all active members)."
     },
     {
       question: "Is this a loan or investment company?",
       answer:
-        "No. LDF is not a loan, investment, or get-rich-quick scheme. Earnings depend on participation and teamwork."
+        "No. LDF is a digital affiliate community. It is not an investment, loan, or get-rich-quick scheme. Earnings are based solely on participation, team building, and community activity."
     },
     {
       question: "Can I join without referring?",
       answer:
-        "Yes. Members who do not refer can still earn monthly from the community business pool."
+      "Yes. While referrals unlock the fastest income stream, members who do not refer can still earn matrix spillover and monthly dividends from the community business pool."
     },
     {
       question: "How do I withdraw?",
       answer:
-        "All withdrawals are processed automatically to your registered account once you meet the minimum threshold."
+        "All withdrawals are processed automatically to your registered bank account once you meet the minimum threshold, typically within 24-48 hours."
     }
   ];
 
@@ -50,7 +51,7 @@ export default function FAQ() {
       className="animate-section py-20 px-6 bg-gray-50"
     >
       <div className="max-w-5xl mx-auto">
-        <h2 className="text-3xl font-bold text-center text-emerald-700 mb-10">
+        <h2 className="text-3xl md:text-4xl font-extrabold text-center text-[--dark] mb-12">
           Frequently Asked Questions
         </h2>
 
@@ -58,27 +59,31 @@ export default function FAQ() {
           {faq.map((item, i) => (
             <div
               key={i}
-              className="bg-white border border-gray-200 rounded-xl shadow-sm"
+              // Enhanced card styling
+              className="bg-white border border-gray-100 rounded-xl shadow-soft hover:shadow-lg transition-fast overflow-hidden"
             >
               <button
                 className="w-full flex items-center justify-between p-5 text-left"
                 onClick={() => toggle(i)}
               >
-                <span className="text-lg font-semibold text-gray-800">
+                <span className="text-lg font-semibold text-[--dark]">
                   {item.question}
                 </span>
                 <ChevronDown
-                  className={`w-6 h-6 text-emerald-600 transition-transform ${
+                  className={`w-6 h-6 text-[--emerald] transition-transform duration-300 ${
                     openIndex === i ? "rotate-180" : "rotate-0"
                   }`}
                 />
               </button>
 
-              {openIndex === i && (
-                <div className="px-5 pb-5 text-gray-600 leading-relaxed">
-                  {item.answer}
-                </div>
-              )}
+              {/* Conditional Answer Display with smoother transition appearance */}
+              <div 
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${openIndex === i ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}
+              >
+                  <div className="px-5 pb-5 text-gray-600 leading-relaxed border-t border-gray-50/50 pt-2">
+                    {item.answer}
+                  </div>
+              </div>
             </div>
           ))}
         </div>

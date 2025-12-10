@@ -1,44 +1,59 @@
-import { Table } from "lucide-react";
+// src/components/MatrixEarnings.jsx
+import React from 'react';
 
-export default function MatrixEarnings() {
-  const levels = [
-    { level: 1, people: 5, earning: "₦1,000" },
-    { level: 2, people: 25, earning: "₦2,500" },
-    { level: 3, people: 125, earning: "₦12,500" },
-    { level: 4, people: 625, earning: "₦62,500" },
-    { level: 5, people: 3125, earning: "₦312,500" },
-  ];
+const MatrixTable = () => {
+  const levels = ['L1', 'L2', 'L3', 'L4', 'L5'];
+  // Assuming a consistent ₦500 total matrix payout for the 5 levels
+  const payouts = ['₦150', '₦120', '₦60', '₦120', '₦50']; // Adjusted L5 to ₦50 to total ₦500
 
   return (
-    <section id="matrix" className="py-20 px-6 bg-white">
-      <div className="max-w-5xl mx-auto text-center">
-        <h2 className="text-3xl md:text-4xl font-bold text-emerald-700 mb-6">
-          Matrix Earnings Breakdown
-        </h2>
+    <div className="flex-1 min-w-[300px]">
+      <div className="text-lg font-bold text-[var(--emerald)]">
+        5 Levels <span className="text-gray-500 font-normal text-sm">/ Deep</span>
+      </div>
+      <div className="text-gray-700 mb-3">Matrix Income (₦500 Total)</div>
 
-        <p className="text-gray-600 max-w-2xl mx-auto mb-10">
-          Earn automatically as your matrix fills across five levels through team activity and referrals.
-        </p>
+      {/* Styled Table */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        {/* Header Row */}
+        <div className="flex justify-around bg-gray-100 font-bold py-3 text-sm text-[var(--dark)]">
+          {levels.map(level => <div key={level} className="w-1/5 text-center">LEVEL {level}</div>)}
+        </div>
+        {/* Payout Row */}
+        <div className="flex justify-around bg-white py-3 text-sm text-gray-700">
+          {payouts.map((payout, index) => <div key={index} className="w-1/5 text-center text-[var(--emerald)] font-medium">{payout}</div>)}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse bg-white rounded-xl shadow-md overflow-hidden">
-            <thead className="bg-emerald-600 text-white">
-              <tr>
-                <th className="p-4 text-left">Level</th>
-                <th className="p-4 text-left">People</th>
-                <th className="p-4 text-left">Earnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {levels.map((row, i) => (
-                <tr key={i} className="border-b hover:bg-gray-50">
-                  <td className="p-4 font-semibold">{row.level}</td>
-                  <td className="p-4">{row.people.toLocaleString()}</td>
-                  <td className="p-4 text-emerald-700 font-semibold">{row.earning}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+export default function MatrixEarnings() {
+  return (
+    <section id="matrix-earnings" className="py-20 bg-gray-50">
+      <div className="max-w-4xl mx-auto px-6">
+        
+        <div className="bg-white rounded-xl border-l-4 border-l-[var(--emerald)] shadow-soft p-8">
+          <h3 className="text-center text-xl font-bold p-3 mb-6 bg-[var(--emerald)] text-white rounded-md shadow-md">
+            A. Active Income (Affiliate & Team Growth)
+          </h3>
+          
+          <div className="flex flex-col md:flex-row gap-8">
+            {/* Direct Referral Bonus */}
+            <div className="md:border-r border-gray-200 md:pr-8 pb-4 md:pb-0 flex-1">
+              <div className="text-4xl font-extrabold text-[--emerald] leading-snug">
+                ₦1,000 
+                <span className="text-lg text-gray-500 font-medium ml-2">/ Referral</span>
+              </div>
+              <h4 className="text-lg font-bold text-[--dark] mt-1 mb-3">Direct Referral Bonus</h4>
+              <p className="text-gray-600 text-sm">
+                Paid instantly for every person who purchases the LDF Starter Kit through your unique link.
+              </p>
+            </div>
+            
+            {/* Matrix Table */}
+            <MatrixTable />
+          </div>
         </div>
       </div>
     </section>
