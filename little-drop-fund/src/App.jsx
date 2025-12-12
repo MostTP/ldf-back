@@ -23,7 +23,7 @@ import MasterclassAccess from "./pages/Dashboard/MasterclassAccess";
 
 
 // 🛑 Authentication Placeholder (Used to access dashboard for development)
-const isAuthenticated = true; 
+const isAuthenticated = false; 
 
 
 // Component that handles all Authenticated Routes and applies the Layout
