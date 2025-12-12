@@ -1,10 +1,10 @@
-// src/pages/LoginPage.jsx
+// src/pages/SignupPage.jsx
 import React from 'react';
-import LoginForm from '../components/LoginForm'; // 🛑 NEW IMPORT
+import SignupForm from '../components/SignupForm'; // 🛑 NEW FORM COMPONENT
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export default function LoginPage() {
+export default function SignupPage() {
     const navigate = useNavigate();
 
     return (
@@ -19,20 +19,19 @@ export default function LoginPage() {
             </button>
 
             {/* Main Form Card Wrapper */}
-            <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl p-8 md:p-10 border border-gray-100 mt-10">
+            <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-8 md:p-10 border border-gray-100 mt-10 mb-6">
                 
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h2 className="text-3xl font-extrabold text-[--dark] mb-2">
-                        Member Login
+                        LDF Registration
                     </h2>
                     <p className="text-gray-500 text-sm">
-                        Access your dashboard and earnings.
+                        Create your account and unlock the starter kit.
                     </p>
                 </div>
 
-                {/* 🛑 INTEGRATING THE LOGIN FORM COMPONENT */}
-                <LoginForm />
+                <SignupForm /> 
                 
             </div>
         </div>

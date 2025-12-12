@@ -1,0 +1,124 @@
+// src/pages/TermsAndConditions.jsx
+import React from 'react';
+
+export default function TermsAndConditions() {
+    // Determine the current date for the effective date
+    const effectiveDate = new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    
+    // Helper function for the Naira symbol
+    const N = '₦';
+
+    return (
+        <div className="min-h-screen bg-white pt-20 pb-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-4xl mx-auto">
+                <header className="mb-10 text-center">
+                    <h1 className="text-4xl font-extrabold text-[--dark] mb-3">
+                        LDF Terms & Conditions
+                    </h1>
+                    <p className="text-lg text-gray-600">
+                        Effective Date: {effectiveDate}
+                    </p>
+                </header>
+
+                <div className="space-y-10 text-gray-700 leading-relaxed text-base">
+                    
+                    {/* SECTION I: Terms & Conditions (Key Clauses) */}
+                    <section className="p-6 bg-gray-50 rounded-xl shadow-inner">
+                        <h2 className="text-3xl font-extrabold text-[--emerald] mb-4">I. Terms & Conditions (Key Clauses)</h2>
+                        
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">1. Acceptance of Terms</h3>
+                        <p>
+                            By registering for and utilizing the Little Drop Fund (LDF) platform, you agree to be bound by these Terms and Conditions. LDF reserves the right to modify these terms at any time. Your continued use of the platform constitutes acceptance of the revised terms.
+                        </p>
+
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">2. Membership and Fees</h3>
+                        <ul className="list-disc list-inside ml-4 space-y-3">
+                            <li>
+                                **2.1. Registration Fee:** A one-time, non-refundable fee of {N}3,000 (Naira) is required to activate your membership. This fee grants you immediate, lifetime access to the LDF Financial Freedom Starter Kit (Digital Masterclass).
+                            </li>
+                            <li>
+                                **2.2. Nature of Purchase:** The primary purpose of the registration fee is the purchase of the LDF educational content. The opportunity to participate in the affiliate/referral commission structure and the Global Pool is an ancillary benefit of purchasing the educational product.
+                            </li>
+                            <li>
+                                **2.3. Refund Policy:** Due to the immediate digital delivery and non-returnable nature of the educational content, all registration fees are strictly non-refundable.
+                            </li>
+                        </ul>
+                        
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">3. Earnings and Compensation Structure</h3>
+                        <ul className="list-disc list-inside ml-4 space-y-3">
+                            <li>
+                                **3.1. Active Income:** Compensation from Direct Referral bonuses ({N}1,000) and Matrix Payouts ({N}500 distributed across 5 levels) is paid strictly for the successful sale of the LDF Financial Freedom Starter Kit.
+                            </li>
+                            <li>
+                                **3.2. Global Dividend Pool (The Safety Net):** Eligibility for the variable monthly Global Pool payout is strictly limited to members whose cumulative earnings from active (Direct Referral and Matrix) income were {N}0.00 in the preceding month. This pool is funded exclusively by the ROI generated from the separate LDF Community Investment Pool.
+                            </li>
+                            <li>
+                                **3.3. Compliance:** LDF is not a pyramid scheme. Commissions are paid only upon the sale of the digital product, not merely for recruiting new participants.
+                            </li>
+                        </ul>
+
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">4. Premium Investment Tier (Optional)</h3>
+                        <ul className="list-disc list-inside ml-4 space-y-3">
+                            <li>
+                                **4.1. Separate Entity:** The LDF Premium Investment Tier (LDF Capital Pool) is an optional and separate investment service. Any capital invested here (minimum {N}10,000) is managed under specific investment agreements, which must be reviewed and accepted separately.
+                            </li>
+                            <li>
+                                **4.2. No Guarantee:** LDF guarantees neither the principal invested nor the returns generated by the LDF Capital Pool. Investment performance is dependent on market conditions and venture success.
+                            </li>
+                        </ul>
+                    </section>
+
+                    {/* SECTION II: Risk Disclosure Statement */}
+                    <section className="p-6 bg-yellow-50 border-l-4 border-yellow-500 rounded-xl shadow-md">
+                        <h2 className="text-3xl font-extrabold text-yellow-700 mb-4">⚠️ II. Risk Disclosure Statement</h2>
+                        <p className="font-semibold text-yellow-800 mb-4">
+                            Please read this disclosure carefully. By proceeding, you acknowledge and accept the risks outlined below.
+                        </p>
+                        
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">1. Earnings are Not Guaranteed</h3>
+                        <p>
+                            LDF makes no claims, promises, or guarantees concerning your future earnings or success. Your earning potential in the active affiliate system is entirely dependent on your personal sales efforts, time commitment, leadership skills, and market conditions. There is no guarantee that you will earn any income.
+                        </p>
+
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">2. Global Pool Volatility</h3>
+                        <p>
+                            The Global Dividend Pool is a non-fixed, variable reward based on the profitability of the LDF Community Investment Pool.
+                        </p>
+                        <ul className="list-disc list-inside ml-4 space-y-2 mt-2">
+                            <li>The payout range ({N}1,250 to {N}3,500) is an illustrative target based on assumed market performance.</li>
+                            <li>Payouts may be lower than the minimum or zero in months where the underlying community ventures generate insufficient returns or incur losses.</li>
+                        </ul>
+
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">3. Investment Risk (Premium Tier)</h3>
+                        <p>Participation in the optional LDF Premium Investment Tier involves significant risk, including the risk of capital loss.</p>
+                        <ul className="list-disc list-inside ml-4 space-y-2 mt-2">
+                            <li>Funds in the LDF Capital Pool are exposed to risks inherent in financial markets and business ventures.</li>
+                            <li>LDF is not an SEC-registered investment advisor or bank. Members should only invest capital they can afford to lose.</li>
+                        </ul>
+
+                        <h3 className="text-xl font-semibold text-[--dark] mt-6 mb-2">4. Limitation of Liability</h3>
+                        <p>
+                            LDF shall not be liable for any direct, indirect, incidental, or consequential damages resulting from the use or inability to use the platform, including but not limited to, losses sustained in personal investment decisions based on the LDF educational content.
+                        </p>
+                    </section>
+                    
+                    {/* SECTION III: Income Disclosure Statement (IDS) */}
+                    <section className="p-6 bg-red-50 border-l-4 border-red-500 rounded-xl shadow-md">
+                        <h2 className="text-3xl font-extrabold text-red-700 mb-4">🛑 III. Income Disclosure Statement (IDS)</h2>
+                        <h3 className="text-xl font-semibold text-[--dark] mt-4 mb-2">LITTLE DROP FUND INCOME DISCLOSURE STATEMENT</h3>
+                        <ul className="list-disc list-inside ml-4 space-y-3">
+                            <li>Earnings are not typical. The income figures represented by our top earners or in testimonials are not guarantees or projections of what you should expect to earn.</li>
+                            <li>Most members earn little to no income. The vast majority of affiliate members in any business, including LDF, will earn less than the amount of the initial registration fee. Success requires hard work, dedication, and excellent sales skills.</li>
+                            <li>Required Investment: LDF is a digital affiliate program. The only required purchase is the {N}3,000 Financial Freedom Starter Kit. No further investment or purchase of optional products is required to participate in the affiliate commission structure.</li>
+                        </ul>
+                    </section>
+                    
+                </div>
+            </div>
+        </div>
+    );
+}

@@ -1,67 +1,80 @@
 // src/App.jsx
 
 import { useState } from "react";
-import { Routes, Route } from "react-router-dom"; 
-import SignupModal from "./components/SignupModal";
+import { Routes, Route, Navigate } from "react-router-dom"; 
 
 // --- CORE LAYOUT & PAGES ---
 import DashboardLayout from "./components/DashboardLayout";
-import LandingPage from "./pages/LandingPage"; // Public Content
-import LoginPage from "./pages/LoginPage"; // Auth Page
+import LandingPage from "./pages/LandingPage";
+import LoginPage from "./pages/LoginPage"; 
+import SignupPage from "./pages/SignupPage"; 
+import AgentsPage from "./pages/AgentsPage"; 
+import PrivacyPolicy from "./pages/PrivacyPolicy";           
+import TermsAndConditions from "./pages/TermsAndConditions"; 
+import BackToTopButton from "./components/BackToTopButton"; 
+import ForgotPassword from "./pages/ForgotPassword"; // 🛑 NEW IMPORT FOR PASSWORD RESET
 
-// --- DASHBOARD CONTENT PAGES (New Pages) ---
+// --- DASHBOARD CONTENT PAGES (Ensure these files exist in src/pages/Dashboard) ---
 import DashboardHome from "./pages/Dashboard/DashboardHome";
 import MatrixView from "./pages/Dashboard/MatrixView";
-import WalletPage from "./pages/Dashboard/WalletPage"; // Assuming you named it WalletPage.jsx
-import SettingsPage from "./pages/Dashboard/SettingsPage"; // Assuming you named it SettingsPage.jsx
+import WalletPage from "./pages/Dashboard/WalletPage";
+import SettingsPage from "./pages/Dashboard/SettingsPage";
 import MasterclassAccess from "./pages/Dashboard/MasterclassAccess";
 
 
-// Component that handles all Dashboard Routes and applies the Layout
-const DashboardRoutes = () => (
-  <DashboardLayout>
-    {/* All authenticated pages are defined within the layout */}
-    <Routes>
-      <Route index element={<DashboardHome />} />
-      <Route path="matrix" element={<MatrixView />} />
-      <Route path="earnings" element={<WalletPage />} /> {/* Using WalletPage for earnings/payouts */}
-      <Route path="wallet" element={<WalletPage />} /> {/* Duplicating for Wallet route */}
-      <Route path="masterclass" element={<MasterclassAccess />} />
-      <Route path="settings" element={<SettingsPage />} />
-      
-      {/* Premium Upgrade is a simplified placeholder for now */}
-      <Route path="premium" element={<div>Premium Upgrade Page (Coming Soon)</div>} />
+// 🛑 Authentication Placeholder (Used to access dashboard for development)
+const isAuthenticated = true; 
 
-      {/* Catch-all for dashboard errors */}
-      <Route path="*" element={<div>404 Dashboard Page Not Found</div>} />
-    </Routes>
-  </DashboardLayout>
+
+// Component that handles all Authenticated Routes and applies the Layout
+const AppRoutes = () => (
+ // Check to redirect unauthorized users
+ !isAuthenticated ? (
+ <Navigate to="/login" replace />
+ ) : (
+ <DashboardLayout>
+{/* All authenticated pages are defined within the layout */}
+ <Routes>
+ <Route index element={<DashboardHome />} />
+ <Route path="matrix" element={<MatrixView />} />
+ <Route path="earnings" element={<WalletPage />} /> 
+ <Route path="wallet" element={<WalletPage />} /> 
+ <Route path="masterclass" element={<MasterclassAccess />} />
+ <Route path="settings" element={<SettingsPage />} />
+ <Route path="premium" element={<div>Premium Upgrade Page (Coming Soon)</div>} />
+
+ {/* Catch-all for dashboard errors */}
+ <Route path="*" element={<div>404 Dashboard Page Not Found</div>} />
+ </Routes>
+ </DashboardLayout>
+ )
 );
 
 
 export default function App() {
-  const [showSignup, setShowSignup] = useState(false);
+ return (
+ <div className="w-full overflow-x-hidden bg-white text-gray-800">
+ 
+ <Routes>
+ {/* PUBLIC ROUTES */}
+ <Route path="/" element={<LandingPage />} /> 
+ <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} /> {/* 🛑 NEW ROUTE ADDED */}
+ <Route path="/signup" element={<SignupPage />} /> 
+ <Route path="/agents" element={<AgentsPage />} /> 
+ 
+ {/* LEGAL ROUTES */}
+ <Route path="/privacy" element={<PrivacyPolicy />} /> 
+ <Route path="/terms" element={<TermsAndConditions />} /> 
+ {/* AUTHENTICATED ROUTES */}
+ <Route path="/app/*" element={<AppRoutes />} />
+ 
+ {/* Catch-all for non-existent public pages */}
+ <Route path="*" element={<div>404 Page Not Found</div>} />
+ </Routes>
+ 
+ <BackToTopButton />
 
-  const openSignup = () => setShowSignup(true);
-  const closeSignup = () => setShowSignup(false);
-
-  return (
-    <div className="w-full overflow-x-hidden bg-white text-gray-800">
-      
-      {/* Signup Modal (Renders globally outside router) */}
-      {showSignup && <SignupModal onClose={closeSignup} />}
-
-      <Routes>
-        {/* PUBLIC ROUTES */}
-        <Route path="/" element={<LandingPage onOpenSignup={openSignup} />} />
-        <Route path="/login" element={<LoginPage />} />
-        
-        {/* AUTHENTICATED DASHBOARD ROUTES */}
-        <Route path="/dashboard/*" element={<DashboardRoutes />} />
-        
-        {/* Catch-all for non-existent public pages */}
-        <Route path="*" element={<div>404 Page Not Found</div>} />
-      </Routes>
-    </div>
-  );
+ </div>
+ );
 }

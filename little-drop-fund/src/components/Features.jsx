@@ -57,7 +57,7 @@ export default function Features() {
  ))}
 
  {/* 2. RENDER PREMIUM ROI (Spans both columns) */}
-          <div className="md:col-span-2"> 
+ <div className="md:col-span-2"> 
  <FeatureCard {...PREMIUM_ROI_FEATURE} />
  </div>
  </div>

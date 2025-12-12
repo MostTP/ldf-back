@@ -1,10 +1,9 @@
-// src/pages/LandingPage.jsx (Content moved from old App.jsx return)
-
+// src/pages/LandingPage.jsx
 import Navbar from "../components/Navbar";
 import Hero from "../components/Hero";
-import Streams from "../components/Streams";
 import Testimonials from "../components/Testimonials"; 
 import Features from "../components/Features";
+import Streams from "../components/Streams";
 import MatrixEarnings from "../components/MatrixEarnings";
 import PremiumInvestment from "../components/PremiumInvestment";
 import TopEarners from "../components/TopEarners";
@@ -13,14 +12,27 @@ import FAQ from "../components/FAQ";
 import Disclaimer from "../components/Disclaimer";
 import CTA from "../components/CTA";
 import Footer from "../components/Footer";
+import { useNavigate } from 'react-router-dom'; // 🛑 NEW IMPORT
 
-export default function LandingPage({ onOpenSignup }) {
+export default function LandingPage() { 
+    // 🛑 Removed { onOpenSignup } prop
+    const navigate = useNavigate();
+    
+    // Function to navigate to the dedicated Signup Page
+    const handleOpenSignup = () => {
+        navigate('/signup');
+    };
+
   return (
     <>
-      <Navbar onOpenSignup={onOpenSignup} />
-      <Hero onOpenSignup={onOpenSignup} />
-      <Streams />
+      {/* Pass the new navigation function to Navbar and CTA */}
+      <Navbar onOpenSignup={handleOpenSignup} />
+      <Hero onOpenSignup={handleOpenSignup} />
+      
+      {/* Ensure Streams is before Features */}
+      <Streams /> 
       <Features />
+      
       <MatrixEarnings />
       <PremiumInvestment />
       <TopEarners />
@@ -28,8 +40,8 @@ export default function LandingPage({ onOpenSignup }) {
       <CommunityImpact />
       <FAQ />
       <Disclaimer />
-      <CTA onOpenSignup={onOpenSignup} />
+      <CTA onOpenSignup={handleOpenSignup} />
       <Footer />
     </>
   );
-} 
+}

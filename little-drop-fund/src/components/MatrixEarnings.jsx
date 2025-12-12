@@ -4,7 +4,7 @@ import React from 'react';
 const MatrixTable = () => {
   const levels = ['L1', 'L2', 'L3', 'L4', 'L5'];
   // Assuming a consistent ₦500 total matrix payout for the 5 levels
-  const payouts = ['₦150', '₦120', '₦60', '₦120', '₦50']; // Adjusted L5 to ₦50 to total ₦500
+  const payouts = ['₦120', '₦100', '₦60', '₦100', '₦120']; // Adjusted L5 to ₦50 to total ₦500
 
   return (
     <div className="flex-1 min-w-[300px]">
