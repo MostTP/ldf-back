@@ -2,7 +2,9 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -137,16 +139,32 @@ router.post('/login', loginValidation, async (req, res) => {
       createdAt: user.createdAt,
     };
 
+    // Generate JWT token
+    const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
+    if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error',
+      });
+    }
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
     res.json({
       success: true,
       message: 'Login successful',
+      token,
       user: userData,
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
@@ -248,7 +266,7 @@ router.post('/register', registerValidation, async (req, res) => {
       verificationToken: process.env.NODE_ENV === 'development' ? emailVerificationToken : undefined,
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('Registration error:', error);
     
     // Handle Prisma unique constraint errors
     if (error.code === 'P2002') {
@@ -328,7 +346,7 @@ router.post('/verify-email', verifyEmailValidation, async (req, res) => {
       message: 'Email verified successfully',
     });
   } catch (error) {
-    console.error('Email verification error:', error);
+    logger.error('Email verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',
@@ -401,7 +419,7 @@ router.post('/resend-verification', resendVerificationValidation, async (req, re
       verificationToken: process.env.NODE_ENV === 'development' ? emailVerificationToken : undefined,
     });
   } catch (error) {
-    console.error('Resend verification error:', error);
+    logger.error('Resend verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',

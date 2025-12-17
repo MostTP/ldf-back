@@ -1,6 +1,42 @@
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
+import { logger } from '../utils/logger.js';
 
 const prisma = new PrismaClient();
+
+/**
+ * Verify Flutterwave webhook signature
+ */
+function verifyFlutterwaveSignature(req) {
+  const secretHash = process.env.FLUTTERWAVE_SECRET_HASH;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (!secretHash) {
+    if (isProduction) {
+      logger.error('FLUTTERWAVE_SECRET_HASH not set in production - rejecting webhook');
+      return false;
+    }
+    logger.warn('FLUTTERWAVE_SECRET_HASH not set, skipping signature verification (dev mode)');
+    return true; // Allow in development only
+  }
+
+  const signature = req.headers['verif-hash'];
+  if (!signature) {
+    return false;
+  }
+
+  // Handle both raw body (Buffer) and parsed JSON
+  const bodyString = Buffer.isBuffer(req.body) 
+    ? req.body.toString('utf8')
+    : JSON.stringify(req.body);
+
+  const hash = crypto
+    .createHash('sha256')
+    .update(bodyString + secretHash)
+    .digest('hex');
+
+  return hash === signature;
+}
 
 /**
  * Handle payment gateway webhook
@@ -8,15 +44,33 @@ const prisma = new PrismaClient();
  */
 export async function handlePaymentWebhook(req, res) {
   try {
-    const { paymentReference, amount, status, userId, metadata } = req.body;
+    // Parse body if it's a Buffer (raw body) - keep original for signature verification
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString('utf8'));
+    }
 
-    // Verify webhook signature (implement based on your payment gateway)
-    // const isValid = verifyWebhookSignature(req);
-    // if (!isValid) {
-    //   return res.status(403).json({ success: false, message: 'Invalid signature' });
-    // }
+    // Verify webhook signature (uses original req.body which may be Buffer)
+    if (!verifyFlutterwaveSignature(req)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Invalid webhook signature' 
+      });
+    }
 
-    if (status !== 'success' || status !== 'completed') {
+    const { tx_ref, amount, status, customer } = body.data || body;
+    const paymentReference = tx_ref;
+    const userId = body.data?.meta?.userId || body.meta?.userId;
+
+    if (!paymentReference) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment reference missing',
+      });
+    }
+
+    // Flutterwave status check
+    if (status !== 'successful' && status !== 'completed') {
       return res.status(400).json({
         success: false,
         message: 'Payment not successful',
@@ -35,16 +89,27 @@ export async function handlePaymentWebhook(req, res) {
       });
     }
 
+    const finalUserId = userId 
+      ? parseInt(userId) 
+      : existingInvestment?.userId;
+
+    if (!finalUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID not found',
+      });
+    }
+
     // Process premium tier activation
     await prisma.$transaction(async (tx) => {
-      // Create investment record
+      // Update or create investment record
       const investment = await tx.investment.upsert({
         where: { paymentReference },
         update: {
           status: 'completed',
         },
         create: {
-          userId: parseInt(userId),
+          userId: finalUserId,
           amount: parseFloat(amount),
           tier: 'PREMIUM',
           paymentReference,
@@ -54,19 +119,29 @@ export async function handlePaymentWebhook(req, res) {
 
       // Upgrade user to premium
       await tx.user.update({
-        where: { id: parseInt(userId) },
+        where: { id: finalUserId },
         data: { isPremium: true },
       });
 
-      // Create earning entry for premium ROI tracking
-      await tx.earning.create({
-        data: {
-          userId: parseInt(userId),
-          amount: parseFloat(amount),
+      // Create earning entry for premium ROI tracking (if not already exists)
+      const existingEarning = await tx.earning.findFirst({
+        where: {
+          userId: finalUserId,
           type: 'PREMIUM_ROI',
-          description: 'Premium tier investment',
+          description: { contains: paymentReference },
         },
       });
+
+      if (!existingEarning) {
+        await tx.earning.create({
+          data: {
+            userId: finalUserId,
+            amount: parseFloat(amount),
+            type: 'PREMIUM_ROI',
+            description: `Premium tier investment - ${paymentReference}`,
+          },
+        });
+      }
     });
 
     res.json({
@@ -74,7 +149,7 @@ export async function handlePaymentWebhook(req, res) {
       message: 'Payment processed successfully',
     });
   } catch (error) {
-    console.error('Webhook error:', error);
+    logger.error('Webhook error:', error);
     res.status(500).json({
       success: false,
       message: 'Webhook processing failed',

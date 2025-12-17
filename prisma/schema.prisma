@@ -6,33 +6,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // Use "file:./dev.db" for local SQLite
 }
 
-enum EarningType {
-  REFERRAL_BONUS
-  MATRIX_LEVEL_1
-  MATRIX_LEVEL_2
-  MATRIX_LEVEL_3
-  MATRIX_LEVEL_4
-  MATRIX_LEVEL_5
-  GLOBAL_POOL_ROI
-  PREMIUM_ROI
-  OPERATIONS_COST
-}
-
-enum WithdrawalStatus {
-  PENDING
-  APPROVED
-  PAID
-  REJECTED
-}
-
-enum InvestmentTier {
-  BASIC
-  PREMIUM
-}
+// Enums converted to String for SQLite compatibility
+// In production with PostgreSQL, you can use enums
 
 model User {
   id                Int      @id @default(autoincrement())
@@ -65,6 +44,9 @@ model User {
   coupons           Coupon[]
   investments       Investment[]
   withdrawals       Withdrawal[]
+  usedCoupons       Coupon[]      @relation("CouponUsedBy")
+  referrerEarnings  Earning[]     @relation("EarningReferrer")
+  sponsorEarnings   Earning[]     @relation("EarningSponsor")
 
   @@index([email])
   @@index([username])
@@ -94,8 +76,8 @@ model Earning {
   id                Int      @id @default(autoincrement())
   userId            Int
   user              User     @relation(fields: [userId], references: [id])
-  amount            Decimal  @db.Decimal(10, 2)
-  type              EarningType
+  amount            Decimal
+  type              String  // EarningType enum
   description       String?
   referrerId        Int?
   referrer          User?    @relation("EarningReferrer", fields: [referrerId], references: [id])
@@ -115,8 +97,8 @@ model Investment {
   id                Int      @id @default(autoincrement())
   userId            Int
   user              User     @relation(fields: [userId], references: [id])
-  amount            Decimal  @db.Decimal(10, 2)
-  tier              InvestmentTier
+  amount            Decimal
+  tier              String  // InvestmentTier enum (BASIC, PREMIUM)
   paymentReference  String?  @unique
   status            String   @default("pending")
   createdAt         DateTime @default(now())
@@ -131,12 +113,12 @@ model Withdrawal {
   id                Int      @id @default(autoincrement())
   userId            Int
   user              User     @relation(fields: [userId], references: [id])
-  amount            Decimal  @db.Decimal(10, 2)
+  amount            Decimal
   currency          String   @default("NGN")
   bankName          String
   bankAccount       String
   accountName       String?
-  status            WithdrawalStatus @default(PENDING)
+  status            String @default("PENDING")  // WithdrawalStatus enum
   paymentReference  String?
   rejectionReason   String?
   processedAt       DateTime?
