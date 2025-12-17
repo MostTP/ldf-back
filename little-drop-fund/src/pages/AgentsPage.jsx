@@ -50,9 +50,6 @@ export default function AgentsPage() {
 
     // Simulate fetching data from the API
     useEffect(() => {
-        setIsLoading(true);
-        // In a real application, replace this with a call to your API:
-        // api.get('/api/agents/list').then(response => setAgents(response.data)).catch(setError);
         
         setTimeout(() => {
             // Sort by highest balance first
