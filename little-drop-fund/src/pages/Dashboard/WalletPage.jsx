@@ -1,47 +1,85 @@
 // src/pages/Dashboard/Wallet.jsx
 
-import React, { useState } from 'react';
-import { Wallet, DollarSign, TrendingUp, Send, CheckCircle, Clock } from 'lucide-react';
-
-// --- 1. DUMMY DATA ---
-const dummyWalletData = {
-    currentBalance: 15450.00,
-    totalEarnings: 85200.00,
-    minWithdrawal: 5000.00,
-    globalPoolStatus: 'Eligible - Payout due Dec 31st',
-};
-
-const dummyTransactions = [
-    { id: 105, date: '2025-12-05', type: 'Direct Referral Bonus', amount: 1500, source: 'Active Income', status: 'Completed' },
-    { id: 104, date: '2025-12-01', type: 'Global Pool Payout', amount: 3500, source: 'Passive Income', status: 'Completed' },
-    { id: 103, date: '2025-11-28', type: 'Matrix Level 2 Bonus', amount: 100, source: 'Passive Income', status: 'Completed' },
-    { id: 102, date: '2025-11-25', type: 'Withdrawal Request', amount: -20000, source: 'Payout', status: 'Processing' },
-    { id: 101, date: '2025-11-15', type: 'Direct Referral Bonus', amount: 1500, source: 'Active Income', status: 'Completed' },
-];
+import React, { useState, useEffect } from 'react';
+import { Wallet, DollarSign, TrendingUp, Send, CheckCircle, Clock, Loader } from 'lucide-react';
+import { walletService } from '../../api/services';
 
 // --- 2. WALLET COMPONENT ---
 export default function WalletPage() {
+    const [walletData, setWalletData] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [withdrawalAmount, setWithdrawalAmount] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleWithdrawal = (e) => {
+    useEffect(() => {
+        const loadWalletData = async () => {
+            try {
+                const [walletResponse, transactionsResponse] = await Promise.all([
+                    walletService.getWalletData(),
+                    walletService.getTransactions()
+                ]);
+                setWalletData(walletResponse);
+                setTransactions(transactionsResponse.transactions || transactionsResponse || []);
+            } catch (err) {
+                setError(err.message || 'Failed to load wallet data');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadWalletData();
+    }, []);
+
+    // Default wallet data structure
+    const wallet = walletData || {
+        currentBalance: 0,
+        totalEarnings: 0,
+        minWithdrawal: 5000,
+        globalPoolStatus: 'Ineligible'
+    };
+
+    const handleWithdrawal = async (e) => {
         e.preventDefault();
         const amount = parseFloat(withdrawalAmount);
-        if (amount < dummyWalletData.minWithdrawal || amount > dummyWalletData.currentBalance) {
-            alert(`Withdrawal must be between ₦${dummyWalletData.minWithdrawal.toLocaleString()} and ₦${dummyWalletData.currentBalance.toLocaleString()}`);
+        if (amount < wallet.minWithdrawal || amount > wallet.currentBalance) {
+            alert(`Withdrawal must be between ₦${wallet.minWithdrawal.toLocaleString()} and ₦${wallet.currentBalance.toLocaleString()}`);
             return;
         }
 
-        setIsSubmitting(true);
-        console.log(`Submitting withdrawal request for ₦${amount}`);
-        
-        // Simulate API call
-        setTimeout(() => {
+        try {
+            setIsSubmitting(true);
+            await walletService.requestWithdrawal(amount);
             alert(`Withdrawal of ₦${amount.toLocaleString()} requested! It will be processed within 24-48 hours.`);
             setWithdrawalAmount('');
+            // Reload wallet data to reflect the change
+            const walletResponse = await walletService.getWalletData();
+            setWalletData(walletResponse);
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to process withdrawal request');
+        } finally {
             setIsSubmitting(false);
-        }, 2000);
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <Loader size={36} className="animate-spin text-[--emerald]" />
+                <p className="ml-4 text-lg text-gray-600">Loading wallet data...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-8 max-w-4xl mx-auto text-red-700 bg-red-100 border border-red-300 rounded-lg mt-10">
+                <h2 className="text-xl font-bold mb-2">Error Loading Wallet</h2>
+                <p>{error}</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">
@@ -51,24 +89,24 @@ export default function WalletPage() {
             <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-6">
                 <SummaryCard 
                     title="Available Balance" 
-                    value={dummyWalletData.currentBalance} 
+                    value={wallet.currentBalance} 
                     icon={Wallet} 
                     color="text-[--gold]"
                     description="Ready for withdrawal to your registered bank account."
                 />
                 <SummaryCard 
                     title="Total Lifetime Earnings" 
-                    value={dummyWalletData.totalEarnings} 
+                    value={wallet.totalEarnings} 
                     icon={TrendingUp} 
                     color="text-[--emerald]"
                     description="Total income generated across all streams."
                 />
                 <SummaryCard 
                     title="Monthly Global Pool" 
-                    value={3500.00} 
+                    value={wallet.globalPoolAmount || 0} 
                     icon={CheckCircle} 
                     color="text-indigo-600"
-                    description={dummyWalletData.globalPoolStatus}
+                    description={wallet.globalPoolStatus}
                 />
             </div>
 
@@ -81,7 +119,7 @@ export default function WalletPage() {
                     </h3>
                     
                     <form onSubmit={handleWithdrawal} className="space-y-4">
-                        <p className="text-sm text-gray-500">Min. Withdrawal: ₦{dummyWalletData.minWithdrawal.toLocaleString()}. Funds are processed automatically to your bank account.</p>
+                        <p className="text-sm text-gray-500">Min. Withdrawal: ₦{wallet.minWithdrawal.toLocaleString()}. Funds are processed automatically to your bank account.</p>
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₦)</label>
@@ -90,8 +128,8 @@ export default function WalletPage() {
                                 step="any"
                                 value={withdrawalAmount}
                                 onChange={(e) => setWithdrawalAmount(e.target.value)}
-                                min={dummyWalletData.minWithdrawal}
-                                max={dummyWalletData.currentBalance}
+                                min={wallet.minWithdrawal}
+                                max={wallet.currentBalance}
                                 required
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-[--emerald] focus:ring-1 focus:ring-[--emerald] outline-none"
                                 placeholder="e.g., 5000.00"
@@ -100,7 +138,7 @@ export default function WalletPage() {
                         
                         <button
                             type="submit"
-                            disabled={isSubmitting || withdrawalAmount < dummyWalletData.minWithdrawal}
+                            disabled={isSubmitting || withdrawalAmount < wallet.minWithdrawal}
                             className={`w-full py-3 text-white font-bold rounded-lg shadow-md transition-fast ${
                                 isSubmitting 
                                     ? 'bg-gray-400 cursor-not-allowed' 
@@ -127,7 +165,14 @@ export default function WalletPage() {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {dummyTransactions.map((tx) => (
+                                {transactions.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="4" className="px-6 py-4 text-center text-gray-500">
+                                            No transactions yet
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    transactions.map((tx) => (
                                     <tr key={tx.id} className={tx.type.includes('Payout') ? 'bg-red-50/50' : ''}>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[--dark]">{tx.type}</td>
@@ -143,7 +188,8 @@ export default function WalletPage() {
                                             {tx.status}
                                         </td>
                                     </tr>
-                                ))}
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>

@@ -1,8 +1,9 @@
 // src/components/LoginForm.jsx
 import { useState } from "react";
 import { Lock, User, CheckCircle } from "lucide-react";
-import { useNavigate, Link } from "react-router-dom"; // 🛑 IMPORTED Link
-import api from "../api/api"; // Axios instance
+import { useNavigate, Link } from "react-router-dom";
+import { authService } from "../api/services";
+import { setAuth } from "../utils/auth";
 
 // =========================================================================
 // 1. HELPER COMPONENT (Reusing the InputField style from SignupForm)
@@ -52,29 +53,25 @@ export default function LoginForm({ onLoginSuccess }) {
  return;
  }
 
- try {
- setIsLoading(true);
+try {
+setIsLoading(true);
 
- // 🛑 AXIOS POST REQUEST to your login endpoint
- const response = await api.post('/auth/login', { 
- username: formData.username,
- password: formData.password,
- });
- // Assuming your API returns a token in response.data.token
- const token = response.data.token;
- 
- if (token) {
- // Store token for future authenticated requests
- localStorage.setItem('ldf_token', token);
- setSuccess(true);
- 
- // Navigate to the main protected application hub
- setTimeout(() => navigate('/app'), 1500); 
+// Real API call
+const response = await authService.login(formData.username, formData.password);
+const token = response.token;
 
- } else {
- // Handle case where API succeeds but no token is returned
- setError('Login successful, but no token received. Please try again.');
- }
+if (token && response.success && response.user) {
+// Store token and user data
+setAuth(token, response.user);
+setSuccess(true);
+
+// Navigate to the main protected application hub
+setTimeout(() => navigate('/app'), 1500);
+
+} else {
+// Handle case where API succeeds but no token is returned
+setError(response.message || 'Login failed. Please try again.');
+}
 
  } catch (err) {
  console.error("Login Failed:", err);

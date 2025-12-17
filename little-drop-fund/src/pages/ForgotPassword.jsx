@@ -1,26 +1,30 @@
 // src/pages/ForgotPassword.jsx
 import React, { useState } from 'react';
 import { Mail, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom'; // 🛑 Ensure Link is imported
+import { Link } from 'react-router-dom';
+import { authService } from '../api/services';
 
 export default function ForgotPassword() {
     const [email, setEmail] = useState('');
     const [message, setMessage] = useState('');
     const [isSuccess, setIsSuccess] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError(null);
+        setIsLoading(true);
         
-        // --- Placeholder API Call ---
-        // In a real application, this would send a request to your backend to send an email.
-        console.log("Password reset request for:", email);
-
-        // MOCK SUCCESS RESPONSE
-        setTimeout(() => {
+        try {
+            await authService.forgotPassword(email);
             setIsSuccess(true);
             setMessage(`If an account with ${email} exists, a password reset link has been sent to your email address.`);
-        }, 500);
-        // -----------------------------
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to send reset link. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -36,6 +40,11 @@ export default function ForgotPassword() {
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {error && (
+                        <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-800 rounded-md">
+                            <p className="font-medium">{error}</p>
+                        </div>
+                    )}
                     {isSuccess ? (
                         <div className="p-4 bg-green-50 border-l-4 border-[--emerald] text-green-800 rounded-md">
                             <p className="font-medium">{message}</p>
@@ -55,15 +64,21 @@ export default function ForgotPassword() {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
-                                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:border-[--emerald] focus:ring-1 focus:ring-[--emerald] outline-none transition"
+                                    disabled={isLoading}
+                                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:border-[--emerald] focus:ring-1 focus:ring-[--emerald] outline-none transition disabled:bg-gray-100"
                                 />
                             </div>
                             
                             <button
                                 type="submit"
-                                className="w-full py-3 text-white font-bold rounded-lg shadow-md transition-fast bg-[--emerald] hover:bg-green-700"
+                                disabled={isLoading}
+                                className={`w-full py-3 text-white font-bold rounded-lg shadow-md transition-fast ${
+                                    isLoading 
+                                        ? 'bg-gray-400 cursor-not-allowed' 
+                                        : 'bg-[--emerald] hover:bg-green-700'
+                                }`}
                             >
-                                SEND RESET LINK
+                                {isLoading ? 'Sending...' : 'SEND RESET LINK'}
                             </button>
                         </>
                     )}

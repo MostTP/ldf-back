@@ -1,6 +1,5 @@
 // src/App.jsx
 
-import { useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom"; 
 
 // --- CORE LAYOUT & PAGES ---
@@ -20,16 +19,17 @@ import MatrixView from "./pages/Dashboard/MatrixView";
 import WalletPage from "./pages/Dashboard/WalletPage";
 import SettingsPage from "./pages/Dashboard/SettingsPage";
 import MasterclassAccess from "./pages/Dashboard/MasterclassAccess";
+import AgentDashboard from "./pages/Dashboard/AgentDashboard";
 
 
-// 🛑 Authentication Placeholder (Used to access dashboard for development)
-const isAuthenticated = false; 
+// Authentication check using utility
+import { isAuthenticated as checkAuth } from './utils/auth'; 
 
 
 // Component that handles all Authenticated Routes and applies the Layout
 const AppRoutes = () => (
  // Check to redirect unauthorized users
- !isAuthenticated ? (
+ !checkAuth() ? (
  <Navigate to="/login" replace />
  ) : (
  <DashboardLayout>
@@ -41,6 +41,7 @@ const AppRoutes = () => (
  <Route path="wallet" element={<WalletPage />} /> 
  <Route path="masterclass" element={<MasterclassAccess />} />
  <Route path="settings" element={<SettingsPage />} />
+ <Route path="agent" element={<AgentDashboard />} />
  <Route path="premium" element={<div>Premium Upgrade Page (Coming Soon)</div>} />
 
  {/* Catch-all for dashboard errors */}

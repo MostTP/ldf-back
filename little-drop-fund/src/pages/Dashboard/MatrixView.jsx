@@ -1,27 +1,56 @@
 // src/pages/Dashboard/MatrixView.jsx
 
-import React, { useState } from 'react';
-import { User, Maximize2, CheckCircle, Clock } from 'lucide-react';
-
-// --- DUMMY DATA ---
-// Matrix figures based on 5x5 structure (2^n) and project brief payout
-const matrixData = {
-    username: "sarahjmoney",
-    totalDownline: 154,
-    // Total spots in a 2x5 matrix: 2+4+8+16+32 = 62
-    filledSpots: 28, 
-    potentialEarning: 550000,
-    matrixLevels: [
-        { level: 1, required: 2, current: 2, status: 'Completed', bonus: 120 }, // ₦120 payout
-        { level: 2, required: 4, current: 4, status: 'Completed', bonus: 100 }, // ₦100 payout
-        { level: 3, required: 8, current: 8, status: 'Completed', bonus: 60 },  // ₦60 payout
-        { level: 4, required: 16, current: 10, status: 'In Progress', bonus: 100 }, // ₦100 payout
-        { level: 5, required: 32, current: 4, status: 'Open', bonus: 120 }, // ₦120 payout
-    ]
-};
+import React, { useState, useEffect } from 'react';
+import { User, Maximize2, CheckCircle, Clock, Loader } from 'lucide-react';
+import { matrixService } from '../../api/services';
 
 // --- MATRIX VIEW COMPONENT ---
 export default function MatrixView() {
+    const [matrixData, setMatrixData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const loadMatrixData = async () => {
+            try {
+                const data = await matrixService.getMatrixData();
+                setMatrixData(data);
+            } catch (err) {
+                setError(err.message || 'Failed to load matrix data');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadMatrixData();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <Loader size={36} className="animate-spin text-[--emerald]" />
+                <p className="ml-4 text-lg text-gray-600">Loading matrix data...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-8 max-w-4xl mx-auto text-red-700 bg-red-100 border border-red-300 rounded-lg mt-10">
+                <h2 className="text-xl font-bold mb-2">Error Loading Matrix</h2>
+                <p>{error}</p>
+            </div>
+        );
+    }
+
+    // Default data structure if API returns different format
+    const data = matrixData || {
+        username: "user",
+        totalDownline: 0,
+        filledSpots: 0,
+        potentialEarning: 0,
+        matrixLevels: []
+    };
 
     // Helper function to render status icon
     const StatusIcon = ({ status }) => {
@@ -36,9 +65,9 @@ export default function MatrixView() {
             
             {/* --- A. Matrix Summary Card --- */}
             <div className="grid md:grid-cols-3 bg-white p-6 rounded-xl shadow-soft border border-gray-200 divide-x divide-gray-100">
-                <SummaryStat title="Total Downline" value={matrixData.totalDownline} icon={User} color="text-indigo-600" />
-                <SummaryStat title="Filled Spots Status" value={`${matrixData.filledSpots}/62`} icon={Maximize2} color="text-gray-600" />
-                <SummaryStat title="Total Matrix Bonus" value={`₦${matrixData.potentialEarning.toLocaleString()}`} icon={CheckCircle} color="text-[--emerald]" />
+                <SummaryStat title="Total Downline" value={data.totalDownline} icon={User} color="text-indigo-600" />
+                <SummaryStat title="Filled Spots Status" value={`${data.filledSpots}/62`} icon={Maximize2} color="text-gray-600" />
+                <SummaryStat title="Total Matrix Bonus" value={`₦${data.potentialEarning.toLocaleString()}`} icon={CheckCircle} color="text-[--emerald]" />
             </div>
 
             {/* --- B. Level Breakdown Table --- */}
@@ -57,7 +86,7 @@ export default function MatrixView() {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {matrixData.matrixLevels.map((level) => (
+                            {data.matrixLevels.map((level) => (
                                 <tr key={level.level} className={level.status === 'Completed' ? 'bg-green-50/50' : ''}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[--dark]">Level {level.level}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{level.required}</td>
@@ -79,7 +108,7 @@ export default function MatrixView() {
                 <h3 className="text-xl font-semibold text-[--dark] mb-4">Team Visualization (L1 & L2)</h3>
                 
                 <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <MatrixNode name={matrixData.username} isYou={true} />
+                    <MatrixNode name={data.username} isYou={true} />
                     <div className="w-px h-6 bg-gray-400 my-2"></div>
                     
                     {/* Level 1 Downline */}

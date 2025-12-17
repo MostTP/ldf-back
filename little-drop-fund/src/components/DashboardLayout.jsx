@@ -1,35 +1,53 @@
 // src/components/DashboardLayout.jsx
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Home, Users, DollarSign, Wallet, Clipboard, Settings, LogOut, X, Menu, Crown } from "lucide-react";
-
-// Placeholder for user data (this would come from context/API in a real app)
-const DUMMY_USER = {
-  name: "Sarah J.",
-  username: "sarahjmoney",
-};
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Home, Users, DollarSign, Wallet, Clipboard, Settings, LogOut, X, Menu, Crown, Ticket } from "lucide-react";
+import { getUser, clearAuth } from "../utils/auth";
+import { dashboardService } from "../api/services";
 
 // Define the dashboard navigation links (must match routes in App.jsx)
-const navItems = [
-  { name: "Dashboard", icon: Home, path: "/dashboard" },
-  { name: "My Team Matrix", icon: Users, path: "/dashboard/matrix" },
-  { name: "Wallet & Payouts", icon: Wallet, path: "/dashboard/wallet" },
-  { name: "Masterclass Access", icon: Clipboard, path: "/dashboard/masterclass" },
-  { name: "Settings", icon: Settings, path: "/dashboard/settings" },
+const baseNavItems = [
+  { name: "Dashboard", icon: Home, path: "/app" },
+  { name: "My Team Matrix", icon: Users, path: "/app/matrix" },
+  { name: "Wallet & Payouts", icon: Wallet, path: "/app/wallet" },
+  { name: "Masterclass Access", icon: Clipboard, path: "/app/masterclass" },
+  { name: "Settings", icon: Settings, path: "/app/settings" },
   // Optional but good to include:
-  { name: "Premium Upgrade", icon: Crown, path: "/dashboard/premium" },
+  { name: "Premium Upgrade", icon: Crown, path: "/app/premium" },
 ];
 
 // 🚨 This line must use 'export default' to fix your previous error 🚨
 export default function DashboardLayout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [user, setUser] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Load user data from localStorage or API
+    const loadUser = async () => {
+      const storedUser = getUser();
+      if (storedUser) {
+        setUser(storedUser);
+      } else {
+        // Try to fetch from API if not in localStorage
+        try {
+          const profile = await dashboardService.getProfile();
+          setUser(profile);
+        } catch (err) {
+          console.error('Failed to load user profile:', err);
+        }
+      }
+    };
+    loadUser();
+  }, []);
 
   const handleLogout = () => {
-    // Implement actual logout logic here
-    console.log("Logging out...");
-    // Redirect to login page
+    clearAuth();
+    navigate('/login');
   };
+
+  const displayUser = user || { name: 'User', username: 'user' };
 
   const Sidebar = () => (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -43,25 +61,32 @@ export default function DashboardLayout({ children }) {
       
       {/* Navigation Links */}
       <nav className="flex-grow p-4 space-y-2">
-        {navItems.map((item) => {
-          // Checks if the current route matches the link path
-          const isActive = location.pathname === item.path; 
-          return (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`flex items-center p-3 rounded-lg text-sm font-medium transition-colors 
-                ${isActive 
-                  ? 'bg-[--emerald] text-white shadow-md shadow-green-600/20' 
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
-                }`}
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <item.icon size={18} className="mr-3" />
-              {item.name}
-            </Link>
-          );
-        })}
+        {(() => {
+          // Add agent dashboard if user is an agent
+          const navItems = user?.isAgent 
+            ? [...baseNavItems, { name: "Agent Dashboard", icon: Ticket, path: "/app/agent" }]
+            : baseNavItems;
+          
+          return navItems.map((item) => {
+            // Checks if the current route matches the link path
+            const isActive = location.pathname === item.path; 
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`flex items-center p-3 rounded-lg text-sm font-medium transition-colors 
+                  ${isActive 
+                    ? 'bg-[--emerald] text-white shadow-md shadow-green-600/20' 
+                    : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                  }`}
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                <item.icon size={18} className="mr-3" />
+                {item.name}
+              </Link>
+            );
+          });
+        })()}
       </nav>
       
       {/* Settings and Logout */}
@@ -108,17 +133,24 @@ export default function DashboardLayout({ children }) {
             
             <h1 className="text-xl font-bold text-[--dark] ml-2">
                 {/* Dynamically display the current page name */}
-                {navItems.find(item => item.path === location.pathname)?.name || 'Dashboard'}
+                {(() => {
+                  const navItems = user?.isAgent 
+                    ? [...baseNavItems, { name: "Agent Dashboard", icon: Ticket, path: "/app/agent" }]
+                    : baseNavItems;
+                  return navItems.find(item => item.path === location.pathname)?.name || 'Dashboard';
+                })()}
             </h1>
 
             <div className="flex items-center space-x-3">
                 <div className="text-right">
-                    <p className="text-sm font-semibold text-[--dark]">{DUMMY_USER.name}</p>
-                    <p className="text-xs text-gray-500">@{DUMMY_USER.username}</p>
+                    <p className="text-sm font-semibold text-[--dark]">
+                        {displayUser.firstName ? `${displayUser.firstName} ${displayUser.lastName || ''}`.trim() : displayUser.name}
+                    </p>
+                    <p className="text-xs text-gray-500">@{displayUser.username}</p>
                 </div>
                 {/* Placeholder Avatar */}
                 <div className="w-10 h-10 bg-[--emerald] rounded-full flex items-center justify-center text-white font-bold">
-                    {DUMMY_USER.name[0]}
+                    {(displayUser.firstName || displayUser.name || 'U')[0].toUpperCase()}
                 </div>
             </div>
         </header>

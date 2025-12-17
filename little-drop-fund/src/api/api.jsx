@@ -2,10 +2,9 @@
 import axios from 'axios';
 
 // Create a custom instance of Axios with a base URL
+// Can be overridden with VITE_API_BASE_URL environment variable
 const api = axios.create({
-  // 🛑 IMPORTANT: Replace this placeholder with your actual backend URL
-  // Example: 'https://api.yourldfproject.com/v1'
-  baseURL: 'YOUR_BACKEND_API_BASE_URL_HERE', 
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/', 
   headers: {
     'Content-Type': 'application/json',
   },
@@ -22,6 +21,22 @@ api.interceptors.request.use(
     return config;
   },
   error => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor to handle auth errors
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Unauthorized - clear auth and redirect to login
+      localStorage.removeItem('ldf_token');
+      localStorage.removeItem('ldf_user');
+      if (window.location.pathname.startsWith('/app')) {
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );

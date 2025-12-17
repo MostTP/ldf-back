@@ -1,7 +1,7 @@
 // src/components/SignupForm.jsx
 import { useState } from "react";
 import { Lock, Mail, User, Phone, Code, CheckCircle } from "lucide-react";
-import api from "../api/api"; 
+import { authService } from "../api/services"; 
 import { useNavigate, Link } from "react-router-dom"; 
 
 // =========================================================================
@@ -83,9 +83,20 @@ return;
 try {
 setIsLoading(true);
 
-// MOCK API CALL SUCCESS
-await new Promise(resolve => setTimeout(resolve, 1000)); 
-console.log("Registration Successful (Mocked)");
+// Real API call
+await authService.signup({
+  firstName: formData.firstName,
+  lastName: formData.lastName,
+  email: formData.email,
+  phone: formData.phone,
+  username: formData.username,
+  password: formData.password,
+  coupon: formData.coupon,
+  ldfStarterCode: formData.ldfStarterCode,
+  agreeTerms: formData.agreeTerms,
+  agreeRisk: formData.agreeRisk,
+  acknowledgeRefund: formData.acknowledgeRefund
+});
 
 setSuccess(true);
 setTimeout(() => navigate('/login'), 3000); 

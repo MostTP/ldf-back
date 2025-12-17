@@ -1,33 +1,41 @@
 // src/pages/Dashboard/DashboardHome.jsx
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Users, TrendingUp, CreditCard, Loader } from 'lucide-react';
+import { DollarSign, Users, TrendingUp, CreditCard, Loader, Crown } from 'lucide-react';
+import { dashboardService } from '../../api/services';
+import PaymentModal from '../../components/PaymentModal';
 
 export default function DashboardHome() {
     const [stats, setStats] = useState(null);
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [showPayment, setShowPayment] = useState(false);
+
+    const loadDashboardData = async () => {
+        try {
+            // Fetch stats and profile concurrently for speed
+            const [statsResponse, profileResponse] = await Promise.all([
+                dashboardService.getStats(),
+                dashboardService.getProfile()
+            ]);
+
+            setStats(statsResponse);
+            setProfile(profileResponse);
+        } catch (err) {
+            setError(err.message || 'Failed to load dashboard data');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const loadDashboardData = async () => {
-            try {
-                // Fetch stats and profile concurrently for speed
-                const [statsResponse, profileResponse] = await Promise.all([
-                    fetchDashboardStats(),
-                    fetchUserProfile()
-                ]);
-
-                setStats(statsResponse);
-                setProfile(profileResponse);
-            } catch (err) {
-                setError(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         loadDashboardData();
     }, []);
+
+    const handlePaymentSuccess = () => {
+        setShowPayment(false);
+        loadDashboardData(); // Reload to show premium status
+    };
 
     if (loading) {
         return (
@@ -50,6 +58,7 @@ export default function DashboardHome() {
 
     // Safely destructure data
     const userFirstName = profile?.firstName || profile?.username || 'User';
+    const isPremium = profile?.isPremium || false;
     
     // Default mock stats if the response is empty, just for structure
     const dashboardStats = stats || {
@@ -94,8 +103,33 @@ export default function DashboardHome() {
                 />
             </div>
             
-            {/* More dashboard content will go here (e.g., referral link, training links) */}
+            {/* Premium Upgrade Card */}
+            {!isPremium && (
+                <div className="mt-8 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-xl shadow-lg p-6 text-white">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Crown className="w-6 h-6" />
+                                <h3 className="text-2xl font-bold">Upgrade to Premium</h3>
+                            </div>
+                            <p className="text-yellow-100">Get higher returns and exclusive benefits</p>
+                        </div>
+                        <button
+                            onClick={() => setShowPayment(true)}
+                            className="px-6 py-3 bg-white text-yellow-600 font-semibold rounded-lg hover:bg-yellow-50 transition-colors whitespace-nowrap"
+                        >
+                            Upgrade Now - ₦10,000
+                        </button>
+                    </div>
+                </div>
+            )}
 
+            <PaymentModal
+                isOpen={showPayment}
+                onClose={() => setShowPayment(false)}
+                amount={10000}
+                onSuccess={handlePaymentSuccess}
+            />
         </div>
     );
 }
