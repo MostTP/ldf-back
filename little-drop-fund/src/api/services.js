@@ -95,6 +95,12 @@ export const paymentService = {
   initializePayment: async (amount) => {
     const response = await api.post('/payment/initialize', { amount });
     return response.data;
+  },
+
+  // Initialize payment for agent coupon credits
+  initializeAgentCouponPayment: async (quantity) => {
+    const response = await api.post('/payment/agent-coupons/initialize', { quantity });
+    return response.data;
   }
 };
 
@@ -198,16 +204,18 @@ export const matrixService = {
   // Get matrix data (team structure and earnings)
   getMatrixData: async () => {
     try {
-      // Get stats which includes team size
-      const statsResponse = await api.get('/dashboard/stats');
+      // Get stats, profile, and matrix tree in parallel
+      const [statsResponse, profileResponse, matrixResponse] = await Promise.all([
+        api.get('/dashboard/stats'),
+        api.get('/dashboard/profile'),
+        api.get('/dashboard/matrix'),
+      ]);
+
       const stats = statsResponse.data;
-      
-      // Get profile for username
-      const profileResponse = await api.get('/dashboard/profile');
       const profile = profileResponse.data;
+      const matrixTree = matrixResponse.data?.tree;
       
-      // Note: Full matrix endpoint may need to be created in the backend
-      // For now, return structured data based on available stats
+      // Structured data used by MatrixView
       return {
         username: profile.username || 'user',
         totalDownline: stats.teamSize || 0,
@@ -219,7 +227,8 @@ export const matrixService = {
           { level: 3, required: 8, current: 0, status: 'In Progress', bonus: 70 },
           { level: 4, required: 16, current: 0, status: 'In Progress', bonus: 60 },
           { level: 5, required: 32, current: 0, status: 'In Progress', bonus: 70 },
-        ]
+        ],
+        tree: matrixTree || null,
       };
     } catch (error) {
       console.error('Error fetching matrix data:', error);
