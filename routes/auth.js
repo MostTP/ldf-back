@@ -1,5 +1,4 @@
-import express from 'express';
-import { body, validationResult } from 'express-validator';
+import express from 'express'; import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -190,7 +189,7 @@ router.post('/register', registerValidation, async (req, res) => {
       username,
       bankName,
       bankAccount,
-      sponsor,
+      sponsorId,
       couponCode,
       password,
       termsAccepted,
@@ -237,7 +236,7 @@ router.post('/register', registerValidation, async (req, res) => {
         username,
         bankName,
         bankAccount,
-        sponsor: sponsor || null,
+        sponsorId: sponsorId || null,
         couponCode,
         passwordHash,
         termsAccepted: termsAccepted === 'true' || termsAccepted === true,

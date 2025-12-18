@@ -39,9 +39,11 @@ const corsOptions = {
       const allowedOrigins = [
         process.env.FRONTEND_URL,
         'http://localhost:5173',
+        'http://localhost:5174',
         'http://localhost:3000',
         'http://127.0.0.1:5173',
-        'http://127.0.0.1:3000'
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5174'
       ].filter(Boolean);
       
       if (!origin || allowedOrigins.includes(origin)) {
@@ -49,6 +51,7 @@ const corsOptions = {
       } else {
         callback(new Error('Not allowed by CORS'));
       }
+      
     }
   },
   credentials: true,
@@ -80,7 +83,7 @@ app.use('/api/', limiter);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5, // 5 login attempts per 15 minutes
-  message: 'Too many login attempts, please try again later.',
+  message: 'Too many login attempts, please try again later .',
 });
 
 app.use('/api/auth/login', authLimiter);
