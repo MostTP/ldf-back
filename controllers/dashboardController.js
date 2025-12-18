@@ -26,6 +26,7 @@ export async function getProfile(req, res) {
         isAgent: true,
         isPremium: true,
         kycVerified: true,
+        agentCouponCredits: true,
         createdAt: true,
       },
     });
@@ -61,6 +62,7 @@ export async function getProfile(req, res) {
       isAgent: user.isAgent,
       isPremium: user.isPremium,
       kycVerified: user.kycVerified,
+      agentCouponCredits: user.agentCouponCredits ?? 0,
       createdAt: user.createdAt,
     });
   } catch (error) {

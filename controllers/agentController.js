@@ -27,6 +27,26 @@ export async function generateCoupons(req, res) {
     const agentId = req.user.id;
     const quantity = parseInt(req.body.quantity) || 1;
 
+    // Simple credit-based limit: 1 credit per coupon
+    const agent = await prisma.user.findUnique({
+      where: { id: agentId },
+      select: { agentCouponCredits: true },
+    });
+
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agent not found',
+      });
+    }
+
+    if (agent.agentCouponCredits < quantity) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient coupon credits. You have ${agent.agentCouponCredits}, but need ${quantity}. Please deposit or request more credits from admin.`,
+      });
+    }
+
     const coupons = [];
 
     for (let i = 0; i < quantity; i++) {
@@ -42,6 +62,16 @@ export async function generateCoupons(req, res) {
 
       coupons.push(coupon);
     }
+
+    // Deduct credits
+    await prisma.user.update({
+      where: { id: agentId },
+      data: {
+        agentCouponCredits: {
+          decrement: quantity,
+        },
+      },
+    });
 
     res.status(201).json({
       success: true,

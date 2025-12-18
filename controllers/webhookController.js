@@ -60,7 +60,10 @@ export async function handlePaymentWebhook(req, res) {
 
     const { tx_ref, amount, status, customer } = body.data || body;
     const paymentReference = tx_ref;
-    const userId = body.data?.meta?.userId || body.meta?.userId;
+    const meta = body.data?.meta || body.meta || {};
+    const purpose = meta.purpose || 'PREMIUM_UPGRADE';
+    const credits = meta.credits ? parseInt(meta.credits, 10) || 0 : 0;
+    const userId = meta.userId || body.data?.meta?.userId || body.meta?.userId;
 
     if (!paymentReference) {
       return res.status(400).json({
@@ -100,54 +103,94 @@ export async function handlePaymentWebhook(req, res) {
       });
     }
 
-    // Process premium tier activation
-    await prisma.$transaction(async (tx) => {
-      // Update or create investment record
-      const investment = await tx.investment.upsert({
-        where: { paymentReference },
-        update: {
-          status: 'completed',
-        },
-        create: {
-          userId: finalUserId,
-          amount: parseFloat(amount),
-          tier: 'PREMIUM',
-          paymentReference,
-          status: 'completed',
-        },
-      });
-
-      // Upgrade user to premium
-      await tx.user.update({
-        where: { id: finalUserId },
-        data: { isPremium: true },
-      });
-
-      // Create earning entry for premium ROI tracking (if not already exists)
-      const existingEarning = await tx.earning.findFirst({
-        where: {
-          userId: finalUserId,
-          type: 'PREMIUM_ROI',
-          description: { contains: paymentReference },
-        },
-      });
-
-      if (!existingEarning) {
-        await tx.earning.create({
-          data: {
+    // Process payment based on purpose
+    if (purpose === 'AGENT_COUPON') {
+      // Agent coupon credits purchase
+      await prisma.$transaction(async (tx) => {
+        // Update or create investment record with tier AGENT_COUPON
+        await tx.investment.upsert({
+          where: { paymentReference },
+          update: {
+            status: 'completed',
+            tier: 'AGENT_COUPON',
+          },
+          create: {
             userId: finalUserId,
             amount: parseFloat(amount),
-            type: 'PREMIUM_ROI',
-            description: `Premium tier investment - ${paymentReference}`,
+            tier: 'AGENT_COUPON',
+            paymentReference,
+            status: 'completed',
           },
         });
-      }
-    });
 
-    res.json({
-      success: true,
-      message: 'Payment processed successfully',
-    });
+        // Credit agent coupon balance
+        if (credits > 0) {
+          await tx.user.update({
+            where: { id: finalUserId },
+            data: {
+              agentCouponCredits: {
+                increment: credits,
+              },
+            },
+          });
+        }
+      });
+
+      return res.json({
+        success: true,
+        message: 'Agent coupon payment processed successfully',
+      });
+    } else {
+      // Default: premium tier activation
+      await prisma.$transaction(async (tx) => {
+        // Update or create investment record
+        await tx.investment.upsert({
+          where: { paymentReference },
+          update: {
+            status: 'completed',
+            tier: 'PREMIUM',
+          },
+          create: {
+            userId: finalUserId,
+            amount: parseFloat(amount),
+            tier: 'PREMIUM',
+            paymentReference,
+            status: 'completed',
+          },
+        });
+
+        // Upgrade user to premium
+        await tx.user.update({
+          where: { id: finalUserId },
+          data: { isPremium: true },
+        });
+
+        // Create earning entry for premium ROI tracking (if not already exists)
+        const existingEarning = await tx.earning.findFirst({
+          where: {
+            userId: finalUserId,
+            type: 'PREMIUM_ROI',
+            description: { contains: paymentReference },
+          },
+        });
+
+        if (!existingEarning) {
+          await tx.earning.create({
+            data: {
+              userId: finalUserId,
+              amount: parseFloat(amount),
+              type: 'PREMIUM_ROI',
+              description: `Premium tier investment - ${paymentReference}`,
+            },
+          });
+        }
+      });
+
+      return res.json({
+        success: true,
+        message: 'Payment processed successfully',
+      });
+    }
   } catch (error) {
     logger.error('Webhook error:', error);
     res.status(500).json({

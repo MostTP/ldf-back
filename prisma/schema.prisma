@@ -36,6 +36,7 @@ model User {
   isAgent           Boolean  @default(false)
   isPremium         Boolean  @default(false)
   kycVerified       Boolean  @default(false)
+  agentCouponCredits Int     @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
