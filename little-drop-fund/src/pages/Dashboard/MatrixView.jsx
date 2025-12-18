@@ -49,7 +49,8 @@ export default function MatrixView() {
         totalDownline: 0,
         filledSpots: 0,
         potentialEarning: 0,
-        matrixLevels: []
+        matrixLevels: [],
+        tree: null
     };
 
     // Helper function to render status icon
@@ -111,10 +112,29 @@ export default function MatrixView() {
                     <MatrixNode name={data.username} isYou={true} />
                     <div className="w-px h-6 bg-gray-400 my-2"></div>
                     
-                    {/* Level 1 Downline */}
-                    <div className="flex justify-center w-full space-x-8">
-                        <MatrixNode name="Direct Member 1" level={1} />
-                        <MatrixNode name="Direct Member 2" level={1} />
+                    {/* Level 1 Downline (from matrix tree) */}
+                    <div className="flex justify-center w-full flex-wrap gap-6">
+                        {(data.tree?.level1 || []).length === 0 ? (
+                            <p className="text-sm text-gray-500">No direct team members yet. Your first two referrals will appear here.</p>
+                        ) : (
+                            data.tree.level1.map((member) => (
+                                <div key={member.id} className="flex flex-col items-center">
+                                    <MatrixNode name={member.displayName} level={1} />
+                                    {/* Level 2 children for this member */}
+                                    {member.children && member.children.length > 0 && (
+                                        <div className="flex justify-center w-full mt-2 gap-4">
+                                            {member.children.slice(0, 3).map((child) => (
+                                                <MatrixNode
+                                                    key={child.id}
+                                                    name={child.displayName}
+                                                    level={2}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

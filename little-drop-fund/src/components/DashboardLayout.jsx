@@ -29,6 +29,17 @@ export default function DashboardLayout({ children }) {
       const storedUser = getUser();
       if (storedUser) {
         setUser(storedUser);
+        // If user doesn't have isAgent property, fetch profile to get updated data
+        if (storedUser.isAgent === undefined) {
+          try {
+            const profile = await dashboardService.getProfile();
+            const updatedUser = { ...storedUser, ...profile };
+            localStorage.setItem('ldf_user', JSON.stringify(updatedUser));
+            setUser(updatedUser);
+          } catch (err) {
+            console.error('Failed to load user profile:', err);
+          }
+        }
       } else {
         // Try to fetch from API if not in localStorage
         try {

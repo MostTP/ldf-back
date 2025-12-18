@@ -1,7 +1,7 @@
 // src/pages/Dashboard/AgentDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { Ticket, Plus, Copy, CheckCircle, XCircle, Loader, Crown } from 'lucide-react';
-import { agentService } from '../../api/services';
+import { agentService, dashboardService, paymentService } from '../../api/services';
 import { getUser } from '../../utils/auth';
 
 export default function AgentDashboard() {
@@ -11,22 +11,60 @@ export default function AgentDashboard() {
     const [generating, setGenerating] = useState(false);
     const [quantity, setQuantity] = useState(1);
     const [copiedCode, setCopiedCode] = useState(null);
-
-    const user = getUser();
+    const [user, setUser] = useState(getUser());
+    const [buyQuantity, setBuyQuantity] = useState(1);
+    const [buyLoading, setBuyLoading] = useState(false);
 
     useEffect(() => {
+        // Check if user is agent, if not try to fetch profile
         if (user?.isAgent) {
             loadCoupons();
+        } else if (user) {
+            // User exists but might not have isAgent property
+            // Try to load profile to get updated user data
+            loadUserProfile();
+        } else {
+            setLoading(false);
         }
     }, []);
+
+    const loadUserProfile = async () => {
+        try {
+            const profile = await dashboardService.getProfile();
+            // Update user in localStorage and state with profile data
+            if (profile) {
+                const updatedUser = { ...user, ...profile };
+                localStorage.setItem('ldf_user', JSON.stringify(updatedUser));
+                setUser(updatedUser);
+                // Reload coupons if user is agent
+                if (profile.isAgent) {
+                    loadCoupons();
+                } else {
+                    setLoading(false);
+                }
+            } else {
+                setLoading(false);
+            }
+        } catch (err) {
+            console.error('Error loading profile:', err);
+            setLoading(false);
+        }
+    };
 
     const loadCoupons = async () => {
         try {
             setLoading(true);
+            setError(null);
             const response = await agentService.getCoupons();
-            setCoupons(response.data || []);
+            console.log('Coupons response:', response); // Debug log
+            
+            // Handle different response structures
+            const couponsData = response?.data || response || [];
+            setCoupons(Array.isArray(couponsData) ? couponsData : []);
         } catch (err) {
-            setError(err.message || 'Failed to load coupons');
+            console.error('Error loading coupons:', err);
+            const errorMessage = err.response?.data?.message || err.message || 'Failed to load coupons';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -43,9 +81,85 @@ export default function AgentDashboard() {
                 setQuantity(1);
             }
         } catch (err) {
-            setError(err.message || 'Failed to generate coupons');
+            console.error('Error generating coupons:', err);
+            const errorMessage = err.response?.data?.message || err.message || 'Failed to generate coupons';
+            setError(errorMessage);
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const handleBuyCredits = async (e) => {
+        e.preventDefault();
+        try {
+            setBuyLoading(true);
+            setError(null);
+
+            const qty = parseInt(buyQuantity, 10) || 0;
+            if (qty < 1) {
+                setError('Quantity must be at least 1');
+                setBuyLoading(false);
+                return;
+            }
+
+            // Initialize payment for agent coupon credits
+            const resp = await paymentService.initializeAgentCouponPayment(qty);
+            if (!resp.success || !resp.data) {
+                throw new Error(resp.message || 'Failed to initialize payment');
+            }
+
+            const { publicKey, tx_ref, amount, currency, customer, customizations, meta } = resp.data;
+
+            // Ensure Flutterwave script is loaded
+            if (typeof window !== 'undefined' && !window.FlutterwaveCheckout) {
+                const script = document.createElement('script');
+                script.src = 'https://checkout.flutterwave.com/v3.js';
+                script.async = true;
+                document.body.appendChild(script);
+            }
+
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            const startPayment = () => {
+                if (window.FlutterwaveCheckout) {
+                    window.FlutterwaveCheckout({
+                        public_key: publicKey,
+                        tx_ref,
+                        amount,
+                        currency,
+                        payment_options: 'card,ussd,banktransfer,mobilemoney',
+                        customer,
+                        customizations,
+                        meta,
+                        callback: function (response) {
+                            if (response.status === 'successful') {
+                                // Backend webhook will credit the agent; refresh profile to show new balance
+                                loadUserProfile();
+                            } else {
+                                setError('Payment was not successful. Please try again.');
+                            }
+                            setBuyLoading(false);
+                        },
+                        onclose: function () {
+                            setBuyLoading(false);
+                        },
+                    });
+                } else if (attempts < maxAttempts) {
+                    attempts += 1;
+                    setTimeout(startPayment, 500);
+                } else {
+                    setBuyLoading(false);
+                    setError('Flutterwave payment SDK failed to load. Please refresh and try again.');
+                }
+            };
+
+            startPayment();
+        } catch (err) {
+            console.error('Buy credits error:', err);
+            const errorMessage = err.response?.data?.message || err.message || 'Failed to start payment';
+            setError(errorMessage);
+            setBuyLoading(false);
         }
     };
 
@@ -55,17 +169,21 @@ export default function AgentDashboard() {
         setTimeout(() => setCopiedCode(null), 2000);
     };
 
-    if (!user?.isAgent) {
+    // Check if user is agent (from localStorage or after profile load)
+    const isAgent = user?.isAgent;
+    
+    if (!isAgent && !loading) {
         return (
             <div className="p-8 max-w-4xl mx-auto text-center">
                 <Crown className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-700 mb-2">Agent Access Required</h2>
                 <p className="text-gray-600">You need to be an agent to access this page.</p>
+                <p className="text-sm text-gray-500 mt-2">Please contact an administrator to upgrade your account.</p>
             </div>
         );
     }
 
-    if (loading) {
+    if (loading && coupons.length === 0) {
         return (
             <div className="flex justify-center items-center h-screen bg-gray-50">
                 <Loader size={36} className="animate-spin text-[--emerald]" />
@@ -76,6 +194,7 @@ export default function AgentDashboard() {
 
     const usedCount = coupons.filter(c => c.isUsed).length;
     const availableCount = coupons.filter(c => !c.isUsed).length;
+    const couponCredits = user?.agentCouponCredits ?? 0;
 
     return (
         <div className="p-6 md:p-10 bg-gray-50 min-h-screen">
@@ -91,7 +210,7 @@ export default function AgentDashboard() {
             )}
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-lg">
                     <div className="flex items-center justify-between">
                         <div>
@@ -99,6 +218,16 @@ export default function AgentDashboard() {
                             <h3 className="text-2xl font-bold text-[--dark] mt-1">{coupons.length}</h3>
                         </div>
                         <Ticket className="w-8 h-8 text-blue-500" />
+                    </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-lg">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500">Coupon Credits</p>
+                            <h3 className="text-2xl font-bold text-[--dark] mt-1">{couponCredits}</h3>
+                            <p className="text-xs text-gray-500 mt-1">1 credit = 1 coupon you can generate</p>
+                        </div>
+                        <Crown className="w-8 h-8 text-[--gold]" />
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-lg">
@@ -121,42 +250,81 @@ export default function AgentDashboard() {
                 </div>
             </div>
 
-            {/* Generate Coupons Form */}
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                <h2 className="text-xl font-bold text-[--dark] mb-4">Generate New Coupons</h2>
-                <form onSubmit={handleGenerate} className="flex gap-4 items-end">
-                    <div className="flex-1">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Quantity (1-100)
-                        </label>
-                        <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            value={quantity}
-                            onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--emerald] focus:border-transparent"
-                            required
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={generating}
-                        className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        {generating ? (
-                            <>
-                                <Loader className="w-4 h-4 animate-spin" />
-                                Generating...
-                            </>
-                        ) : (
-                            <>
-                                <Plus className="w-4 h-4" />
-                                Generate
-                            </>
-                        )}
-                    </button>
-                </form>
+            {/* Generate Coupons + Buy Credits */}
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-[--dark] mb-4">Generate New Coupons</h2>
+                    <form onSubmit={handleGenerate} className="flex gap-4 items-end">
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Quantity (1-100)
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={quantity}
+                                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--emerald] focus:border-transparent"
+                                required
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={generating}
+                            className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {generating ? (
+                                <>
+                                    <Loader className="w-4 h-4 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="w-4 h-4" />
+                                    Generate
+                                </>
+                            )}
+                        </button>
+                    </form>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                    <h2 className="text-xl font-bold text-[--dark] mb-2">Buy Coupon Credits</h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                        1 credit = 1 coupon you can generate. Each credit costs ₦3,000.
+                    </p>
+                    <form onSubmit={handleBuyCredits} className="flex gap-4 items-end">
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Credits to buy
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={buyQuantity}
+                                onChange={(e) => setBuyQuantity(parseInt(e.target.value) || 1)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--emerald] focus:border-transparent"
+                                required
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={buyLoading}
+                            className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {buyLoading ? (
+                                <>
+                                    <Loader className="w-4 h-4 animate-spin" />
+                                    Processing...
+                                </>
+                            ) : (
+                                'Pay with Flutterwave'
+                            )}
+                        </button>
+                    </form>
+                </div>
             </div>
 
             {/* Coupons List */}
