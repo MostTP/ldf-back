@@ -1,5 +1,7 @@
 // src/App.jsx
 
+
+
 import { Routes, Route, Navigate } from "react-router-dom"; 
 
 // --- CORE LAYOUT & PAGES ---
@@ -8,7 +10,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage"; 
 import SignupPage from "./pages/SignupPage"; 
 import AgentsPage from "./pages/AgentsPage"; 
-import PrivacyPolicy from "./pages/PrivacyPolicy";           
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsAndConditions from "./pages/TermsAndConditions"; 
 import BackToTopButton from "./components/BackToTopButton"; 
 import ForgotPassword from "./pages/ForgotPassword"; // 🛑 NEW IMPORT FOR PASSWORD RESET
