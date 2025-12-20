@@ -13,7 +13,6 @@ export default function AgentDashboard() {
     const [copiedCode, setCopiedCode] = useState(null);
     const [user, setUser] = useState(getUser());
     const [buyQuantity, setBuyQuantity] = useState(1);
-    const [buyLoading, setBuyLoading] = useState(false);
 
     useEffect(() => {
         // Check if user is agent, if not try to fetch profile
@@ -91,75 +90,176 @@ export default function AgentDashboard() {
 
     const handleBuyCredits = async (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        
+        const qty = parseInt(buyQuantity, 10) || 0;
+        if (qty < 1) {
+            setError('Quantity must be at least 1');
+            return;
+        }
+
         try {
-            setBuyLoading(true);
             setError(null);
-
-            const qty = parseInt(buyQuantity, 10) || 0;
-            if (qty < 1) {
-                setError('Quantity must be at least 1');
-                setBuyLoading(false);
-                return;
+            
+            // Initialize payment for inline widget (stays on page)
+            const response = await paymentService.initializeAgentCouponPayment(qty);
+            
+            if (!response.success || !response.data) {
+                throw new Error(response.message || 'Failed to initialize payment');
             }
 
-            // Initialize payment for agent coupon credits
-            const resp = await paymentService.initializeAgentCouponPayment(qty);
-            if (!resp.success || !resp.data) {
-                throw new Error(resp.message || 'Failed to initialize payment');
+            const { publicKey, tx_ref, amount, currency, customer, customizations, meta } = response.data;
+
+            // Load Flutterwave script if not already loaded
+            const loadFlutterwaveScript = () => {
+                return new Promise((resolve, reject) => {
+                    if (typeof window === 'undefined') {
+                        reject(new Error('Window not available'));
+                        return;
+                    }
+
+                    // Check if already loaded
+                    if (window.FlutterwaveCheckout) {
+                        resolve();
+                        return;
+                    }
+
+                    // Check if script tag already exists
+                    const existingScript = document.querySelector('script[src*="checkout.flutterwave.com"]');
+                    if (existingScript) {
+                        existingScript.onload = () => resolve();
+                        existingScript.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+                        return;
+                    }
+
+                    // Create and load script
+                    const script = document.createElement('script');
+                    script.src = 'https://checkout.flutterwave.com/v3.js';
+                    script.async = true;
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+                    document.body.appendChild(script);
+                });
+            };
+
+            // Load script and open inline payment modal
+            await loadFlutterwaveScript();
+            
+            // Wait a bit for Flutterwave to initialize
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (!window.FlutterwaveCheckout) {
+                throw new Error('Flutterwave SDK not available after loading');
             }
 
-            const { publicKey, tx_ref, amount, currency, customer, customizations, meta } = resp.data;
-
-            // Ensure Flutterwave script is loaded
-            if (typeof window !== 'undefined' && !window.FlutterwaveCheckout) {
-                const script = document.createElement('script');
-                script.src = 'https://checkout.flutterwave.com/v3.js';
-                script.async = true;
-                document.body.appendChild(script);
-            }
-
-            let attempts = 0;
-            const maxAttempts = 10;
-
-            const startPayment = () => {
-                if (window.FlutterwaveCheckout) {
-                    window.FlutterwaveCheckout({
-                        public_key: publicKey,
-                        tx_ref,
-                        amount,
-                        currency,
-                        payment_options: 'card,ussd,banktransfer,mobilemoney',
-                        customer,
-                        customizations,
-                        meta,
-                        callback: function (response) {
-                            if (response.status === 'successful') {
-                                // Backend webhook will credit the agent; refresh profile to show new balance
-                                loadUserProfile();
-                            } else {
-                                setError('Payment was not successful. Please try again.');
-                            }
-                            setBuyLoading(false);
-                        },
-                        onclose: function () {
-                            setBuyLoading(false);
-                        },
-                    });
-                } else if (attempts < maxAttempts) {
-                    attempts += 1;
-                    setTimeout(startPayment, 500);
-                } else {
-                    setBuyLoading(false);
-                    setError('Flutterwave payment SDK failed to load. Please refresh and try again.');
+            // Suppress Flutterwave analytics errors (non-critical, doesn't affect payment)
+            // This error is from Flutterwave's event tracking system and doesn't affect payment processing
+            // Note: Browser network errors (like "POST https://flw-events-ge.myflutterwave.com/event/create 400")
+            // appear in the console but cannot be suppressed via JavaScript. They are harmless and don't affect payments.
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            let errorSuppressorActive = false;
+            
+            const errorSuppressor = (...args) => {
+                const errorMsg = args.join(' ').toLowerCase();
+                // Ignore Flutterwave event tracking errors (400 from flw-events-ge.myflutterwave.com)
+                if (errorSuppressorActive && (
+                    errorMsg.includes('flw-events-ge') || 
+                    errorMsg.includes('event/create') ||
+                    errorMsg.includes('flw-events-ge.myflutterwave.com') ||
+                    errorMsg.includes('400') && errorMsg.includes('flutterwave')
+                )) {
+                    return; // Suppress this error
+                }
+                originalError.apply(console, args);
+            };
+            
+            const warnSuppressor = (...args) => {
+                const warnMsg = args.join(' ').toLowerCase();
+                // Also suppress warnings from Flutterwave analytics
+                if (errorSuppressorActive && (
+                    warnMsg.includes('flw-events-ge') || 
+                    warnMsg.includes('event/create')
+                )) {
+                    return; // Suppress this warning
+                }
+                originalWarn.apply(console, args);
+            };
+            
+            const restoreError = () => {
+                if (errorSuppressorActive) {
+                    console.error = originalError;
+                    console.warn = originalWarn;
+                    errorSuppressorActive = false;
                 }
             };
 
-            startPayment();
+            // Activate error suppression
+            console.error = errorSuppressor;
+            console.warn = warnSuppressor;
+            errorSuppressorActive = true;
+
+            // Store tx_ref for verification if needed
+            const paymentTxRef = tx_ref;
+            
+            // Open inline payment modal (stays on your page, no redirect)
+            window.FlutterwaveCheckout({
+                public_key: publicKey,
+                tx_ref: paymentTxRef,
+                amount,
+                currency,
+                payment_options: 'card,ussd,banktransfer,mobilemoney',
+                customer,
+                customizations,
+                meta,
+                callback: async function (response) {
+                    restoreError(); // Restore original console.error
+                    
+                    if (response.status === 'successful') {
+                        // Backend webhook will credit the agent; wait a moment for webhook to process
+                        setError(null);
+                        setBuyQuantity(1); // Reset quantity
+                        
+                        // Store old balance before waiting
+                        const oldBalance = user?.agentCouponCredits || 0;
+                        
+                        // Wait 3 seconds for webhook to process, then refresh profile
+                        setTimeout(async () => {
+                            await loadUserProfile();
+                            
+                            // If balance didn't update, try manual verification
+                            const updatedProfile = await dashboardService.getProfile();
+                            const newBalance = updatedProfile?.agentCouponCredits || 0;
+                            
+                            if (newBalance === oldBalance && paymentTxRef) {
+                                // Webhook might not have fired, try manual verification
+                                try {
+                                    console.log('Balance not updated, attempting manual verification...');
+                                    const verifyResponse = await paymentService.verifyAgentCouponPayment(paymentTxRef);
+                                    if (verifyResponse.success) {
+                                        console.log('Manual verification successful!', verifyResponse);
+                                        await loadUserProfile(); // Refresh again to show new balance
+                                    }
+                                } catch (verifyErr) {
+                                    console.error('Manual verification failed:', verifyErr);
+                                    setError('Payment successful but balance not updated. Please contact support with payment reference: ' + paymentTxRef);
+                                }
+                            }
+                        }, 3000); // Wait 3 seconds for webhook to process
+                    } else {
+                        setError('Payment was not successful. Please try again.');
+                    }
+                },
+                onclose: function () {
+                    restoreError(); // Restore original console.error when modal closes
+                    // User closed the payment modal
+                    // Do nothing, just let them try again
+                },
+            });
         } catch (err) {
             console.error('Buy credits error:', err);
             const errorMessage = err.response?.data?.message || err.message || 'Failed to start payment';
             setError(errorMessage);
-            setBuyLoading(false);
         }
     };
 
@@ -253,46 +353,46 @@ export default function AgentDashboard() {
             {/* Generate Coupons + Buy Credits */}
             <div className="grid md:grid-cols-2 gap-6 mb-8">
                 <div className="bg-white rounded-xl shadow-lg p-6">
-                    <h2 className="text-xl font-bold text-[--dark] mb-4">Generate New Coupons</h2>
-                    <form onSubmit={handleGenerate} className="flex gap-4 items-end">
-                        <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Quantity (1-100)
-                            </label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="100"
-                                value={quantity}
-                                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--emerald] focus:border-transparent"
-                                required
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            disabled={generating}
-                            className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            {generating ? (
-                                <>
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <Plus className="w-4 h-4" />
-                                    Generate
-                                </>
-                            )}
-                        </button>
-                    </form>
+                <h2 className="text-xl font-bold text-[--dark] mb-4">Generate New Coupons</h2>
+                <form onSubmit={handleGenerate} className="flex gap-4 items-end">
+                    <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Quantity (1-100)
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={quantity}
+                            onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--emerald] focus:border-transparent"
+                            required
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={generating}
+                        className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                        {generating ? (
+                            <>
+                                <Loader className="w-4 h-4 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Plus className="w-4 h-4" />
+                                Generate
+                            </>
+                        )}
+                    </button>
+                </form>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-lg p-6">
                     <h2 className="text-xl font-bold text-[--dark] mb-2">Buy Coupon Credits</h2>
                     <p className="text-sm text-gray-600 mb-4">
-                        1 credit = 1 coupon you can generate. Each credit costs ₦3,000.
+                        1 credit = 1 coupon you can generate. Each credit costs ₦100.
                     </p>
                     <form onSubmit={handleBuyCredits} className="flex gap-4 items-end">
                         <div className="flex-1">
@@ -311,17 +411,9 @@ export default function AgentDashboard() {
                         </div>
                         <button
                             type="submit"
-                            disabled={buyLoading}
-                            className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-6 py-2 bg-[--emerald] text-white font-semibold rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                         >
-                            {buyLoading ? (
-                                <>
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Processing...
-                                </>
-                            ) : (
-                                'Pay with Flutterwave'
-                            )}
+                            Pay with Flutterwave
                         </button>
                     </form>
                 </div>

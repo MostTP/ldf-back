@@ -98,8 +98,19 @@ export const paymentService = {
   },
 
   // Initialize payment for agent coupon credits
+  // Get payment URL for agent coupon credits (redirect-based)
+  getAgentCouponPaymentUrl: async (quantity) => {
+    console.log('Making POST request to /payment/agent-coupons/pay with quantity:', quantity);
+    const response = await api.post('/payment/agent-coupons/pay', { quantity });
+    console.log('Response received:', response.data);
+    return response.data;
+  },
   initializeAgentCouponPayment: async (quantity) => {
     const response = await api.post('/payment/agent-coupons/initialize', { quantity });
+    return response.data;
+  },
+  verifyAgentCouponPayment: async (tx_ref) => {
+    const response = await api.post('/payment/agent-coupons/verify', { tx_ref });
     return response.data;
   }
 };

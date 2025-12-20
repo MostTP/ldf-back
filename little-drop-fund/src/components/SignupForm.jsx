@@ -99,7 +99,7 @@ await authService.signup({
 });
 
 setSuccess(true);
-setTimeout(() => navigate('/login'), 3000); 
+setTimeout(() => navigate('/login'), 50); 
 
 } catch (err) {
 console.error("Registration Failed (Mocked/Actual):", err);
