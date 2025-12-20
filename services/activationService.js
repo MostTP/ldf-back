@@ -47,7 +47,7 @@ export async function activateUser(userId, couponCode) {
     });
 
     // Trigger payouts
-    const payoutResult = await triggerActivationPayouts(userId, 3000);
+    const payoutResult = await triggerActivationPayouts(userId, 50);
 
     return {
       success: true,

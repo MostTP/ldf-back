@@ -7,10 +7,10 @@ const prisma = new PrismaClient();
  * Trigger activation payouts for a new user activation
  * All payouts happen in a single transaction
  * @param {number} newUserId - The newly activated user ID
- * @param {number} activationAmount - Total activation amount (₦3,000)
+ * @param {number} activationAmount - Total activation amount (₦50)
  * @returns {Promise<Object>} Result of the payout operation
  */
-export async function triggerActivationPayouts(newUserId, activationAmount = 3000) {
+export async function triggerActivationPayouts(newUserId, activationAmount = 50) {
   return await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: newUserId },
