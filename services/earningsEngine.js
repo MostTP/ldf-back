@@ -11,6 +11,8 @@ const prisma = new PrismaClient();
  * @returns {Promise<Object>} Result of the payout operation
  */
 export async function triggerActivationPayouts(newUserId, activationAmount = 50) {
+  console.log(`[EARNINGS] Starting activation payouts for user ${newUserId}`);
+  
   return await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: newUserId },
@@ -18,13 +20,17 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50)
     });
 
     if (!user) {
+      console.error(`[EARNINGS] User ${newUserId} not found`);
       throw new Error('User not found');
     }
+
+    console.log(`[EARNINGS] User found: ${user.firstName} ${user.lastName}, Sponsor ID: ${user.sponsorId || 'None'}`);
 
     const payouts = [];
 
     // 1. Referral Bonus: ₦1,000 → direct referrer (sponsor)
     if (user.sponsorId) {
+      console.log(`[EARNINGS] Creating referral bonus for sponsor ${user.sponsorId}`);
       const referralEarning = await tx.earning.create({
         data: {
           userId: user.sponsorId,
@@ -36,7 +42,21 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50)
           activationId: newUserId,
         },
       });
+      
+      // Increment sponsor's balance
+      await tx.user.update({
+        where: { id: user.sponsorId },
+        data: {
+          balance: {
+            increment: 1000,
+          },
+        },
+      });
+      
       payouts.push(referralEarning);
+      console.log(`[EARNINGS] Referral bonus created: ₦1,000 for sponsor ${user.sponsorId}`);
+    } else {
+      console.log(`[EARNINGS] No sponsor found for user ${newUserId}, skipping referral bonus`);
     }
 
     // 2. Global Pool Allocation: ₦1,000 → pool ledger (system user or special handling)
@@ -71,6 +91,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50)
     if (user.sponsorId) {
       // Get upline hierarchy starting from the sponsor
       const upline = await getUplineHierarchy(user.sponsorId);
+      console.log(`[EARNINGS] Found ${upline.length} upline levels for matrix bonuses`);
       
       for (let i = 0; i < Math.min(upline.length, 5); i++) {
         const level = i + 1;
@@ -87,14 +108,31 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50)
             activationId: newUserId,
           },
         });
+        
+        // Increment upline user's balance
+        await tx.user.update({
+          where: { id: sponsorId },
+          data: {
+            balance: {
+              increment: amount,
+            },
+          },
+        });
+        
         payouts.push(matrixEarning);
+        console.log(`[EARNINGS] Matrix level ${level} bonus created: ₦${amount} for user ${sponsorId}`);
       }
+    } else {
+      console.log(`[EARNINGS] No sponsor found, skipping matrix bonuses`);
     }
+
+    const totalAmount = payouts.reduce((sum, p) => sum + Number(p.amount), 0);
+    console.log(`[EARNINGS] Activation payouts completed: ${payouts.length} payouts, Total: ₦${totalAmount}`);
 
     return {
       success: true,
       payouts: payouts.length,
-      totalAmount: payouts.reduce((sum, p) => sum + Number(p.amount), 0),
+      totalAmount: totalAmount,
     };
   });
 }

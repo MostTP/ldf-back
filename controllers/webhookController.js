@@ -95,10 +95,10 @@ export async function handlePaymentWebhook(req, res) {
       // In production, always reject invalid signatures
       if (isProduction) {
         logger.error('Webhook signature verification failed in production');
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Invalid webhook signature' 
-        });
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Invalid webhook signature' 
+      });
       }
       
       // In dev mode, log warning but continue if no secret hash is set
@@ -294,12 +294,23 @@ export async function handlePaymentWebhook(req, res) {
       });
 
       if (!existingEarning) {
+        const premiumAmount = parseFloat(amount);
         await tx.earning.create({
           data: {
             userId: finalUserId,
-            amount: parseFloat(amount),
+            amount: premiumAmount,
             type: 'PREMIUM_ROI',
             description: `Premium tier investment - ${paymentReference}`,
+          },
+        });
+        
+        // Increment user's balance
+        await tx.user.update({
+          where: { id: finalUserId },
+          data: {
+            balance: {
+              increment: premiumAmount,
+            },
           },
         });
       }

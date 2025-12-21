@@ -37,6 +37,7 @@ model User {
   isPremium         Boolean  @default(false)
   kycVerified       Boolean  @default(false)
   agentCouponCredits Int     @default(0)
+  balance           Decimal  @default(0)  // Stored available balance
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

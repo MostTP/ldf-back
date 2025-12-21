@@ -21,7 +21,11 @@ export async function activate(req, res) {
     const { couponCode } = req.body;
     const userId = req.user.id;
 
+    console.log(`[ACTIVATION CONTROLLER] Activation request - User: ${userId}, Coupon: ${couponCode}`);
+
     const result = await activateUser(userId, couponCode);
+
+    console.log(`[ACTIVATION CONTROLLER] Activation successful for user ${userId}`);
 
     res.json({
       success: true,
@@ -29,7 +33,8 @@ export async function activate(req, res) {
       data: result,
     });
   } catch (error) {
-    console.error('Activation error:', error);
+    console.error('[ACTIVATION CONTROLLER] Activation error:', error);
+    console.error('[ACTIVATION CONTROLLER] Error stack:', error.stack);
     res.status(400).json({
       success: false,
       message: error.message || 'Activation failed',

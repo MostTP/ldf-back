@@ -30,6 +30,16 @@ export async function distributeGlobalPoolROI() {
             description: 'Monthly global pool ROI distribution',
           },
         });
+        
+        // Increment user's balance
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            balance: {
+              increment: roiPerUser,
+            },
+          },
+        });
       }
     });
 
@@ -77,6 +87,16 @@ export async function distributePremiumROI() {
               amount: quarterlyROI,
               type: 'PREMIUM_ROI',
               description: 'Quarterly premium ROI distribution',
+            },
+          });
+          
+          // Increment user's balance
+          await tx.user.update({
+            where: { id: user.id },
+            data: {
+              balance: {
+                increment: quarterlyROI,
+              },
             },
           });
         }

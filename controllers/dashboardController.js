@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { getUserBalance } from '../services/withdrawalService.js';
 import { getUplineHierarchy } from '../utils/matrixService.js';
 
@@ -144,5 +145,147 @@ async function getTeamSize(userId) {
   }
 
   return count;
+}
+
+/**
+ * Update user bank details
+ */
+export async function updateBankDetails(req, res) {
+  try {
+    const userId = req.user.id;
+    const { bankName, accountName, accountNumber } = req.body;
+
+    // Validation
+    if (!bankName || !accountNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bank name and account number are required',
+      });
+    }
+
+    // Validate account number (should be numeric and reasonable length)
+    if (!/^\d+$/.test(accountNumber) || accountNumber.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid account number format',
+      });
+    }
+
+    // Update user bank details
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        bankName: bankName.trim(),
+        bankAccount: accountNumber.trim(),
+        // Note: accountName is typically derived from firstName + lastName
+        // If you want to store it separately, you'd need to add an accountName field to the schema
+      },
+      select: {
+        id: true,
+        bankName: true,
+        bankAccount: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Bank details updated successfully',
+      bankDetails: {
+        bankName: updatedUser.bankName,
+        accountName: `${updatedUser.firstName} ${updatedUser.lastName}`,
+        accountNumber: updatedUser.bankAccount,
+        isSet: true,
+      },
+    });
+  } catch (error) {
+    console.error('Update bank details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update bank details',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+}
+
+/**
+ * Change user password
+ */
+export async function changePassword(req, res) {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    // Validation
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
+    }
+
+    // Validate new password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 8 characters long',
+      });
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must contain at least one uppercase letter, one lowercase letter, and one number',
+      });
+    }
+
+    // Get user with password hash
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+
+    if (!isCurrentPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change password',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
 }
 

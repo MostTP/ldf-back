@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger.js';
+import { activateUser } from '../services/activationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -49,8 +50,8 @@ const registerValidation = [
     .trim(),
   
   body('couponCode')
-    .trim()
-    .notEmpty().withMessage('Activation coupon code is required'),
+    .optional()
+    .trim(),
   
   body('password')
     .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
@@ -189,7 +190,8 @@ router.post('/register', registerValidation, async (req, res) => {
       username,
       bankName,
       bankAccount,
-      sponsorId,
+      sponsor,
+      sponsorId, // Allow direct sponsorId for backward compatibility
       couponCode,
       password,
       termsAccepted,
@@ -218,6 +220,25 @@ router.post('/register', registerValidation, async (req, res) => {
       });
     }
 
+    // Resolve sponsor (username/code) to sponsorId
+    let resolvedSponsorId = sponsorId || null;
+    
+    if (sponsor && !resolvedSponsorId) {
+      // Try to find sponsor by username (most common case)
+      const sponsorUser = await prisma.user.findUnique({
+        where: { username: sponsor.trim() },
+        select: { id: true },
+      });
+
+      if (sponsorUser) {
+        resolvedSponsorId = sponsorUser.id;
+      } else {
+        // If not found by username, could be a referral code or invalid
+        // For now, we'll log a warning but allow registration to proceed
+        logger.warn(`Sponsor not found: ${sponsor}. User will be registered without sponsor.`);
+      }
+    }
+
     // Hash password with bcrypt (10 rounds)
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
@@ -236,7 +257,7 @@ router.post('/register', registerValidation, async (req, res) => {
         username,
         bankName,
         bankAccount,
-        sponsorId: sponsorId || null,
+        sponsorId: resolvedSponsorId,
         couponCode,
         passwordHash,
         termsAccepted: termsAccepted === 'true' || termsAccepted === true,
@@ -256,12 +277,42 @@ router.post('/register', registerValidation, async (req, res) => {
       },
     });
 
+    // Automatically activate user if coupon code is provided
+    let activationResult = null;
+    let activationError = null;
+
+    if (couponCode && couponCode.trim()) {
+      try {
+        logger.info(`[REGISTRATION] Auto-activating user ${user.id} with coupon ${couponCode}`);
+        activationResult = await activateUser(user.id, couponCode.trim());
+        logger.info(`[REGISTRATION] Auto-activation successful for user ${user.id}`);
+      } catch (error) {
+        // Log error but don't fail registration - user can activate manually later
+        activationError = error.message;
+        logger.error(`[REGISTRATION] Auto-activation failed for user ${user.id}:`, error);
+      }
+    }
+
     // TODO: Send verification email with token
     // For now, return the token in development (remove in production)
+    const responseMessage = activationResult 
+      ? 'Account created and activated successfully. Earnings have been distributed.'
+      : activationError
+      ? `Account created successfully. Activation failed: ${activationError}. You can activate manually later.`
+      : 'Account created successfully. Please verify your email.';
+
     res.status(201).json({
       success: true,
-      message: 'Account created successfully. Please verify your email.',
+      message: responseMessage,
       user,
+      activated: !!activationResult,
+      activation: activationResult ? {
+        success: true,
+        payouts: activationResult.payouts,
+      } : activationError ? {
+        success: false,
+        error: activationError,
+      } : null,
       verificationToken: process.env.NODE_ENV === 'development' ? emailVerificationToken : undefined,
     });
   } catch (error) {
