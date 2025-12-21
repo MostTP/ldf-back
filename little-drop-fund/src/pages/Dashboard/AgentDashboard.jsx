@@ -15,12 +15,8 @@ export default function AgentDashboard() {
     const [buyQuantity, setBuyQuantity] = useState(1);
 
     useEffect(() => {
-        // Check if user is agent, if not try to fetch profile
-        if (user?.isAgent) {
-            loadCoupons();
-        } else if (user) {
-            // User exists but might not have isAgent property
-            // Try to load profile to get updated user data
+        // Always load fresh profile to get latest data including agentCouponCredits
+        if (user) {
             loadUserProfile();
         } else {
             setLoading(false);
@@ -30,9 +26,11 @@ export default function AgentDashboard() {
     const loadUserProfile = async () => {
         try {
             const profile = await dashboardService.getProfile();
+            console.log('Profile loaded from API:', profile); // Debug log
             // Update user in localStorage and state with profile data
             if (profile) {
                 const updatedUser = { ...user, ...profile };
+                console.log('Updated user with agentCouponCredits:', updatedUser.agentCouponCredits); // Debug log
                 localStorage.setItem('ldf_user', JSON.stringify(updatedUser));
                 setUser(updatedUser);
                 // Reload coupons if user is agent
@@ -295,6 +293,9 @@ export default function AgentDashboard() {
     const usedCount = coupons.filter(c => c.isUsed).length;
     const availableCount = coupons.filter(c => !c.isUsed).length;
     const couponCredits = user?.agentCouponCredits ?? 0;
+    
+    // Debug log to check what's being rendered
+    console.log('Rendering AgentDashboard - user:', user, 'couponCredits:', couponCredits);
 
     return (
         <div className="p-6 md:p-10 bg-gray-50 min-h-screen">

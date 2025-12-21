@@ -136,7 +136,7 @@ export const walletService = {
       return {
         currentBalance: balance,
         totalEarnings: stats.totalEarnings || 0,
-        minWithdrawal: 5000, // Default minimum
+        minWithdrawal: 500, // Default minimum (reduced for testing)
         globalPoolStatus: stats.globalPoolStatus || 'Ineligible',
         globalPoolAmount: 0, // Can be calculated from earnings if needed
       };
@@ -155,13 +155,21 @@ export const walletService = {
   // Get transaction history (earnings and withdrawals)
   getTransactions: async () => {
     try {
-      // Get earnings
-      const earningsResponse = await api.get('/dashboard/stats');
-      // Note: Full transaction history endpoint may need to be created
-      // For now, return empty array or mock data structure
+      // Get withdrawals history
+      const withdrawalsResponse = await api.get('/withdraw/history');
+      const withdrawals = withdrawalsResponse.data.data || [];
+      
+      // Format withdrawals for display
+      const formattedTransactions = withdrawals.map(w => ({
+        id: w.id,
+        date: new Date(w.createdAt).toLocaleDateString(),
+        type: 'Withdrawal',
+        amount: -Number(w.amount), // Negative for withdrawals
+        status: w.status === 'PAID' ? 'Completed' : w.status === 'PENDING' ? 'Pending' : w.status === 'FAILED' ? 'Failed' : w.status,
+      }));
+
       return {
-        transactions: [],
-        // In the future, this should call a dedicated transactions endpoint
+        transactions: formattedTransactions,
       };
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -171,9 +179,15 @@ export const walletService = {
 
   // Request withdrawal
   requestWithdrawal: async (amount, currency = 'NGN', bankDetails = {}) => {
+    // Ensure amount is a number
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount)) {
+      throw new Error('Invalid withdrawal amount');
+    }
+    
     const response = await api.post('/withdraw', {
-      amount,
-      currency,
+      amount: numAmount,
+      currency: currency || 'NGN',
       ...bankDetails
     });
     return response.data;
@@ -263,16 +277,12 @@ export const settingsService = {
 
   // Update bank details
   updateBankDetails: async (bankData) => {
-    // TODO: Create PUT /api/dashboard/bank endpoint in backend
-    // For now, this will fail until the endpoint is created
     const response = await api.put('/dashboard/bank', bankData);
     return response.data;
   },
 
   // Change password
   changePassword: async (currentPassword, newPassword) => {
-    // TODO: Create PUT /api/dashboard/password endpoint in backend
-    // For now, this will fail until the endpoint is created
     const response = await api.put('/dashboard/password', {
       currentPassword,
       newPassword

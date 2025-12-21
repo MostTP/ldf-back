@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Banknote, Lock, Mail, Phone, Code, Save, Loader2, AlertCircle } from 'lucide-react';
+import { User, Banknote, Lock, Mail, Phone, Code, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { settingsService, dashboardService } from '../../api/services';
 
 // =========================================================================
@@ -45,14 +45,18 @@ const InputField = ({ label, value = '', icon: Icon, type = 'text', readOnly = f
 const SettingsForm = ({ children, title, onSubmit }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [formError, setFormError] = useState(null);
+    const [formSuccess, setFormSuccess] = useState(null);
     
     const handleSubmit = async (e) => {
         e.preventDefault();
         setFormError(null);
+        setFormSuccess(null);
         setIsSaving(true);
         try {
             await onSubmit();
-            alert(`${title} updated successfully!`);
+            setFormSuccess(`${title} updated successfully!`);
+            // Clear success message after 5 seconds
+            setTimeout(() => setFormSuccess(null), 5000);
         } catch (err) {
             setFormError(err.response?.data?.message || err.message || 'Failed to save changes');
         } finally {
@@ -63,8 +67,15 @@ const SettingsForm = ({ children, title, onSubmit }) => {
     return (
         <form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
             <h3 className="text-2xl font-semibold text-[--dark] mb-6">{title}</h3>
+            {formSuccess && (
+                <div className="p-3 bg-green-100 text-green-700 rounded-lg text-sm font-medium flex items-center">
+                    <CheckCircle size={16} className="mr-2" />
+                    {formSuccess}
+                </div>
+            )}
             {formError && (
-                <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium">
+                <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium flex items-center">
+                    <AlertCircle size={16} className="mr-2" />
                     {formError}
                 </div>
             )}

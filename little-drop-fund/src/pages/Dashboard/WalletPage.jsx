@@ -1,7 +1,7 @@
 // src/pages/Dashboard/Wallet.jsx
 
 import React, { useState, useEffect } from 'react';
-import { Wallet, DollarSign, TrendingUp, Send, CheckCircle, Clock, Loader } from 'lucide-react';
+import { Wallet, DollarSign, TrendingUp, Send, CheckCircle, Clock, Loader, AlertCircle } from 'lucide-react';
 import { walletService } from '../../api/services';
 
 // --- 2. WALLET COMPONENT ---
@@ -12,6 +12,8 @@ export default function WalletPage() {
     const [error, setError] = useState(null);
     const [withdrawalAmount, setWithdrawalAmount] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [withdrawalError, setWithdrawalError] = useState(null);
+    const [withdrawalSuccess, setWithdrawalSuccess] = useState(null);
 
     useEffect(() => {
         const loadWalletData = async () => {
@@ -36,28 +38,58 @@ export default function WalletPage() {
     const wallet = walletData || {
         currentBalance: 0,
         totalEarnings: 0,
-        minWithdrawal: 5000,
+        minWithdrawal: 500,
         globalPoolStatus: 'Ineligible'
     };
 
     const handleWithdrawal = async (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        
+        // Clear previous messages
+        setWithdrawalError(null);
+        setWithdrawalSuccess(null);
+        
         const amount = parseFloat(withdrawalAmount);
+        
+        if (isNaN(amount) || amount <= 0) {
+            setWithdrawalError('Please enter a valid withdrawal amount');
+            return;
+        }
+        
         if (amount < wallet.minWithdrawal || amount > wallet.currentBalance) {
-            alert(`Withdrawal must be between ₦${wallet.minWithdrawal.toLocaleString()} and ₦${wallet.currentBalance.toLocaleString()}`);
+            setWithdrawalError(`Withdrawal must be between ₦${wallet.minWithdrawal.toLocaleString()} and ₦${wallet.currentBalance.toLocaleString()}`);
             return;
         }
 
         try {
             setIsSubmitting(true);
-            await walletService.requestWithdrawal(amount);
-            alert(`Withdrawal of ₦${amount.toLocaleString()} requested! It will be processed within 24-48 hours.`);
+            const response = await walletService.requestWithdrawal(amount);
+            
+            if (response.success) {
+                // Show success message
+                setWithdrawalSuccess(`Withdrawal request submitted successfully! Amount: ₦${amount.toLocaleString()}. Status: ${response.data?.status || 'PENDING'}. Your withdrawal will be processed via Seerbit.`);
             setWithdrawalAmount('');
-            // Reload wallet data to reflect the change
-            const walletResponse = await walletService.getWalletData();
+                
+                // Clear success message after 8 seconds
+                setTimeout(() => setWithdrawalSuccess(null), 8000);
+                
+                // Reload wallet data and transactions
+                const [walletResponse, transactionsResponse] = await Promise.all([
+                    walletService.getWalletData(),
+                    walletService.getTransactions()
+                ]);
             setWalletData(walletResponse);
+                setTransactions(transactionsResponse.transactions || []);
+            } else {
+                throw new Error(response.message || 'Withdrawal request failed');
+            }
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to process withdrawal request');
+            const errorMessage = err.response?.data?.message || 
+                                err.response?.data?.errors?.[0]?.msg || 
+                                err.message || 
+                                'Failed to process withdrawal request';
+            setWithdrawalError(errorMessage);
         } finally {
             setIsSubmitting(false);
         }
@@ -118,8 +150,28 @@ export default function WalletPage() {
                         Request Withdrawal
                     </h3>
                     
-                    <form onSubmit={handleWithdrawal} className="space-y-4">
+                    <form onSubmit={handleWithdrawal} className="space-y-4" noValidate>
                         <p className="text-sm text-gray-500">Min. Withdrawal: ₦{wallet.minWithdrawal.toLocaleString()}. Funds are processed automatically to your bank account.</p>
+                        
+                        {withdrawalSuccess && (
+                            <div className="p-3 bg-green-100 text-green-700 rounded-lg text-sm font-medium flex items-start">
+                                <CheckCircle size={18} className="mr-2 mt-0.5 flex-shrink-0" />
+                                <span>{withdrawalSuccess}</span>
+                            </div>
+                        )}
+                        
+                        {withdrawalError && (
+                            <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium flex items-start">
+                                <AlertCircle size={18} className="mr-2 mt-0.5 flex-shrink-0" />
+                                <span>{withdrawalError}</span>
+                            </div>
+                        )}
+                        
+                        {wallet.currentBalance === 0 && (
+                            <p className="text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
+                                ⚠️ You don't have any available balance to withdraw. You need to earn first.
+                            </p>
+                        )}
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₦)</label>
@@ -138,11 +190,11 @@ export default function WalletPage() {
                         
                         <button
                             type="submit"
-                            disabled={isSubmitting || withdrawalAmount < wallet.minWithdrawal}
+                            disabled={isSubmitting || !withdrawalAmount || isNaN(parseFloat(withdrawalAmount)) || parseFloat(withdrawalAmount) < wallet.minWithdrawal || parseFloat(withdrawalAmount) > wallet.currentBalance}
                             className={`w-full py-3 text-white font-bold rounded-lg shadow-md transition-fast ${
                                 isSubmitting 
                                     ? 'bg-gray-400 cursor-not-allowed' 
-                                    : 'bg-[--emerald] hover:bg-green-700'
+                                    : 'bg-[--emerald] hover:bg-green-700 active:bg-green-800'
                             }`}
                         >
                             {isSubmitting ? 'Processing...' : 'Submit Payout Request'}
@@ -168,24 +220,28 @@ export default function WalletPage() {
                                 {transactions.length === 0 ? (
                                     <tr>
                                         <td colSpan="4" className="px-6 py-4 text-center text-gray-500">
-                                            No transactions yet
+                                            No withdrawal requests yet
                                         </td>
                                     </tr>
                                 ) : (
                                     transactions.map((tx) => (
-                                    <tr key={tx.id} className={tx.type.includes('Payout') ? 'bg-red-50/50' : ''}>
+                                    <tr key={tx.id} className={tx.type === 'Withdrawal' ? 'bg-red-50/50' : ''}>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{tx.date}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[--dark]">{tx.type}</td>
                                         <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold ${tx.amount > 0 ? 'text-[--emerald]' : 'text-red-500'}`}>
-                                            {tx.amount > 0 ? '+' : ''}₦{tx.amount.toLocaleString()}
+                                            {tx.amount > 0 ? '+' : ''}₦{Math.abs(tx.amount).toLocaleString()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 flex items-center">
-                                            {tx.status === 'Completed' ? (
+                                            {tx.status === 'Completed' || tx.status === 'PAID' ? (
                                                 <CheckCircle size={16} className="text-[--emerald] mr-1" />
+                                            ) : tx.status === 'FAILED' ? (
+                                                <span className="text-red-500 mr-1">✕</span>
                                             ) : (
                                                 <Clock size={16} className="text-yellow-500 mr-1" />
                                             )}
-                                            {tx.status}
+                                            <span className={tx.status === 'FAILED' ? 'text-red-500' : ''}>
+                                                {tx.status === 'PAID' ? 'Completed' : tx.status === 'PENDING' ? 'Pending' : tx.status}
+                                            </span>
                                         </td>
                                     </tr>
                                     ))
