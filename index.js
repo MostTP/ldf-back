@@ -24,34 +24,34 @@ const PORT = process.env.PORT || 4000;
 // CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    
-    if (isProduction) {
-      // Production: Only allow configured frontend URL
-      const allowedOrigin = process.env.FRONTEND_URL;
-      if (!origin || origin === allowedOrigin) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    } else {
-      // Development: Allow localhost
-    const allowedOrigins = [
-      process.env.FRONTEND_URL,
+    // Common localhost origins for development/testing
+    const localhostOrigins = [
       'http://localhost:5173',
-        'http://localhost:5174',
+      'http://localhost:5174',
       'http://localhost:3000',
       'http://127.0.0.1:5173',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:5174'
-    ].filter(Boolean);
+      'http://127.0.0.1:5174',
+      'http://127.0.0.1:3000',
+    ];
     
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Build allowed origins list
+    const allowedOrigins = [
+      process.env.FRONTEND_URL, // Production frontend URL
+      ...localhostOrigins, // Always allow localhost for testing
+    ].filter(Boolean); // Remove undefined values
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      // Log the blocked origin for debugging
+      logger.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
-      }
-      
     }
   },
   credentials: true,
