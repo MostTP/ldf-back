@@ -3,8 +3,15 @@ import axios from 'axios';
 
 // Create a custom instance of Axios with a base URL
 // Can be overridden with VITE_API_BASE_URL environment variable
+// Ensure base URL always ends with /api/
+let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/';
+if (baseURL && !baseURL.endsWith('/api/')) {
+  // If it doesn't end with /api/, add it
+  baseURL = baseURL.replace(/\/+$/, '') + '/api/';
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/', 
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
