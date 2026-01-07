@@ -43,6 +43,8 @@ const AppRoutes = () => (
  <Route path="wallet" element={<WalletPage />} /> 
  <Route path="masterclass" element={<MasterclassAccess />} />
  <Route path="settings" element={<SettingsPage />} />
+ <Route path="/dashboard" element={<DashboardHome />} />
+<Route path="/dashboard/settings" element={<SettingsPage />} />
  <Route path="agent" element={<AgentDashboard />} />
  <Route path="premium" element={<div>Premium Upgrade Page (Coming Soon)</div>} />
 
