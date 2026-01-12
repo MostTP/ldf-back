@@ -37,7 +37,7 @@ const AppRoutes = () => (
  <DashboardLayout>
 {/* All authenticated pages are defined within the layout */}
  <Routes>
- <Route index element={<DashboardHome />} />
+ <Route path="/" element={<DashboardHome />} />
  <Route path="matrix" element={<MatrixView />} />
  <Route path="earnings" element={<WalletPage />} /> 
  <Route path="wallet" element={<WalletPage />} /> 
