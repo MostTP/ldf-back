@@ -39,9 +39,15 @@ export default function DashboardHome() {
                 dashboardService.getStats(),
                 dashboardService.getProfile()
             ]);
+            console.log('Stats Response:', statsResponse); // Debug log
+            console.log('Affiliate Available:', statsResponse?.affiliateAvailable);
+            console.log('Matrix Available:', statsResponse?.matrixAvailable);
+            console.log('Detty Dec:', statsResponse?.dettyDec);
             setStats(statsResponse);
             setProfile(profileResponse);
         } catch (err) {
+            console.error('Dashboard load error:', err); // Debug log
+            console.error('Error details:', err.response?.data || err.message);
             setError(err.message || 'Failed to load dashboard data');
         } finally {
             setLoading(false);
@@ -121,7 +127,12 @@ export default function DashboardHome() {
                     <p className="text-xs text-gray-500 uppercase font-bold">Monthly Subscription</p>
                     <div className="flex items-center justify-between gap-6 mt-1">
                         <span className="text-lg font-bold text-gray-800">{subDaysLeft} Days</span>
-                        <button className="text-sm text-emerald-600 font-bold hover:underline">Subscribe Now</button>
+                        <button 
+                            onClick={() => setShowPayment(true)}
+                            className="text-sm text-emerald-600 font-bold hover:underline"
+                        >
+                            Subscribe Now
+                        </button>
                     </div>
                 </div>
             </div>
@@ -130,16 +141,31 @@ export default function DashboardHome() {
             <div className="mb-10">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Earnings Wallet</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <IncomeCard title="Affiliate Income" available={stats?.affiliateAvailable || 0} lifetime={stats?.affiliateLifetime || 0} />
-                    <IncomeCard title="Matrix Income" available={stats?.matrixAvailable || 0} lifetime={stats?.matrixLifetime || 0} />
-                    <IncomeCard title="Detty December" available={stats?.dettyDec || 0} isLocked={true} />
+                    <IncomeCard 
+                        title="Affiliate Income" 
+                        available={stats?.affiliateAvailable ?? 0} 
+                        lifetime={stats?.affiliateLifetime ?? 0} 
+                    />
+                    <IncomeCard 
+                        title="Matrix Income" 
+                        available={stats?.matrixAvailable ?? 0} 
+                        lifetime={stats?.matrixLifetime ?? 0} 
+                    />
+                    <IncomeCard 
+                        title="Detty December" 
+                        available={stats?.dettyDec ?? 0} 
+                        isLocked={true} 
+                    />
                 </div>
                 <div className="mt-4 p-4 bg-emerald-600 rounded-xl text-white flex justify-between items-center shadow-lg">
                     <div>
                         <p className="text-sm opacity-80">Total Withdrawable</p>
                         <h3 className="text-2xl font-bold">₦{(stats?.totalWithdrawable || 0).toLocaleString()}</h3>
                     </div>
-                    <button className="px-6 py-2 bg-white text-emerald-600 font-bold rounded-lg hover:bg-emerald-50 transition-colors">
+                    <button 
+                        onClick={() => navigate('/app/wallet')}
+                        className="px-6 py-2 bg-white text-emerald-600 font-bold rounded-lg hover:bg-emerald-50 transition-colors"
+                    >
                         Request Withdrawal
                     </button>
                 </div>

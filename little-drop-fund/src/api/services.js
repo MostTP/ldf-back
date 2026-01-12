@@ -68,11 +68,13 @@ export const authService = {
 export const dashboardService = {
   getStats: async () => {
     const response = await api.get('/dashboard/stats');
+    // Return the data directly (axios already unwraps response.data)
     return response.data;
   },
 
   getProfile: async () => {
     const response = await api.get('/dashboard/profile');
+    // Return the data directly (axios already unwraps response.data)
     return response.data;
   }
 };
