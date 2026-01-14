@@ -1,89 +1,94 @@
-// src/pages/Dashboard/MasterclassAccess.jsx
 import React, { useState } from 'react';
-import { BookOpen, PlayCircle, FileText, CheckCircle, Clock } from 'lucide-react';
+import { BookOpen, PlayCircle, FileText, CheckCircle, Clock, Lock, Send, AlertTriangle } from 'lucide-react';
 
-// --- 1. DUMMY DATA ---
+// --- 1. UPDATED DATA WITH TELEGRAM LINKS ---
 const masterclassModules = [
     { 
         id: 1, 
-        title: "Module 1: Foundations of Financial Freedom", 
-        duration: "15 min", 
+        title: "Course 1: Foundations of Financial Freedom", 
+        duration: "Month 1", 
         type: "Video", 
         completed: true, 
-        content: "Welcome to the Masterclass! This module covers budgeting, debt management, and setting realistic financial goals."
+        monthRequired: 1,
+        telegramLink: "https://t.me/+YOUR_MONTH_1_LINK",
+        content: "Welcome! Access your first month of training directly on our private Telegram channel for secure viewing."
     },
     { 
         id: 2, 
-        title: "Module 2: Understanding Compound Growth", 
-        duration: "22 min", 
+        title: "Course 2: Advanced Growth Strategies", 
+        duration: "Month 2", 
         type: "Video", 
-        completed: true, 
-        content: "Learn how the magic of compounding works, essential for long-term wealth creation. Includes interactive calculator demo."
+        completed: false, 
+        monthRequired: 2,
+        telegramLink: "https://t.me/+YOUR_MONTH_2_LINK",
+        content: "Unlock deep-dive strategies into market analysis and compound growth once your second month begins."
     },
     { 
         id: 3, 
-        title: "Module 3: Introduction to Investment Vehicles", 
-        duration: "30 min", 
+        title: "Course 3: Professional Investment", 
+        duration: "Month 3", 
         type: "Video", 
         completed: false, 
-        content: "A detailed look at stocks, bonds, mutual funds, and real estate. Which option is right for you?"
+        monthRequired: 3,
+        telegramLink: "https://t.me/+YOUR_MONTH_3_LINK",
+        content: "Detailed modules on institutional-grade investment vehicles and risk management."
     },
     { 
         id: 4, 
-        title: "Module 4: Risk Management & Diversification", 
-        duration: "18 min", 
-        type: "Document", 
-        completed: false, 
-        content: "A downloadable PDF guide on minimizing risk and building a truly diversified portfolio."
-    },
-    { 
-        id: 5, 
-        title: "Bonus: Q&A Session Recording (2025)", 
-        duration: "60 min", 
+        title: "Course 4: Master Wealth Management", 
+        duration: "Month 4", 
         type: "Video", 
         completed: false, 
-        content: "Access the recording of our live Q&A session covering common challenges and strategies."
+        monthRequired: 4,
+        telegramLink: "https://t.me/+YOUR_MONTH_4_LINK",
+        content: "The final tier of the LDF Masterclass focusing on legacy building and tax-efficient wealth management."
     },
 ];
 
-// --- 2. MASTERCLASS COMPONENT ---
 export default function MasterClassAccess() {
+    // --- SIMULATED USER DATA ---
+    // Change 'userSubscribedMonths' to 1, 2, 3, or 4 to test the unlocking logic
+    const userSubscribedMonths = 1; 
+
     const [selectedModule, setSelectedModule] = useState(masterclassModules[0]);
 
     const totalModules = masterclassModules.length;
-    const completedModules = masterclassModules.filter(m => m.completed).length;
-    const completionPercentage = Math.round((completedModules / totalModules) * 100);
+    // Progress based on month access rather than individual "completed" check
+    const completionPercentage = Math.round((userSubscribedMonths / totalModules) * 100);
 
     return (
-        <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-[--dark]">LDF Digital Masterclass Portal</h2>
+        <div className="space-y-8 max-w-6xl mx-auto p-4 md:p-0">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h2 className="text-3xl font-bold text-[--dark]">Masterclass Portal</h2>
+                <div className="bg-emerald-50 text-[--emerald] px-4 py-2 rounded-lg border border-emerald-100 flex items-center gap-2">
+                    <CheckCircle size={18} />
+                    <span className="font-bold text-sm">Active Subscription: Month {userSubscribedMonths}</span>
+                </div>
+            </div>
             
             {/* Progress Bar */}
-            <div className="bg-white p-6 rounded-xl shadow-soft border border-gray-200">
+            <div className="bg-white p-6 rounded-xl shadow-soft border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-xl font-semibold text-[--dark]">Your Progress</h3>
-                    <span className="text-2xl font-bold text-[--emerald]">{completionPercentage}%</span>
+                    <h3 className="text-lg font-bold text-[--dark]">Program Completion</h3>
+                    <span className="text-xl font-bold text-[--emerald]">{completionPercentage}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                     <div 
-                        className="bg-[--emerald] h-3 rounded-full transition-all duration-500" 
+                        className="bg-[--emerald] h-3 rounded-full transition-all duration-700 ease-out" 
                         style={{ width: `${completionPercentage}%` }}
                     ></div>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">{completedModules} of {totalModules} modules completed.</p>
             </div>
 
-            {/* Layout: Sidebar (Modules) and Main Content (Player) */}
             <div className="grid lg:grid-cols-3 gap-8">
-                
                 {/* Module List (Sidebar) */}
-                <div className="lg:col-span-1 bg-white p-4 rounded-xl shadow-soft border border-gray-200 h-fit max-h-[70vh] overflow-y-auto">
-                    <h4 className="text-lg font-bold text-[--dark] mb-3">Course Modules</h4>
-                    
+                <div className="lg:col-span-1 space-y-3">
+                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest px-1">Curriculum</h4>
                     {masterclassModules.map((module) => (
                         <ModuleItem 
                             key={module.id} 
                             module={module} 
+                            isUnlocked={userSubscribedMonths >= module.monthRequired}
                             isSelected={module.id === selectedModule.id}
                             onClick={() => setSelectedModule(module)}
                         />
@@ -91,78 +96,97 @@ export default function MasterClassAccess() {
                 </div>
 
                 {/* Content Player Area */}
-                <div className="lg:col-span-2 space-y-6">
-                    <ContentPlayer module={selectedModule} />
+                <div className="lg:col-span-2">
+                    <ContentPlayer 
+                        module={selectedModule} 
+                        isUnlocked={userSubscribedMonths >= selectedModule.monthRequired}
+                    />
                 </div>
             </div>
         </div>
     );
 }
 
-// --- 3. HELPER COMPONENTS ---
+// --- HELPER COMPONENTS ---
 
-// Helper for the module list items
-const ModuleItem = ({ module, isSelected, onClick }) => (
+const ModuleItem = ({ module, isSelected, isUnlocked, onClick }) => (
     <div
         onClick={onClick}
-        className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors border-l-4 mb-2 
+        className={`flex items-center p-4 rounded-xl cursor-pointer transition-all border-2 mb-2 
             ${isSelected 
-                ? 'bg-green-50 border-l-[--emerald] shadow-sm' 
-                : 'bg-white border-l-transparent hover:bg-gray-50'
-            }`}
+                ? 'bg-white border-[--emerald] shadow-md transform scale-[1.02]' 
+                : 'bg-white border-transparent hover:bg-gray-50 opacity-90'
+            } ${!isUnlocked && 'grayscale-[0.5] bg-gray-50'}`}
     >
-        <div className="flex-shrink-0 mr-3">
-            {module.type === 'Video' ? (
-                <PlayCircle size={20} className={isSelected ? 'text-[--emerald]' : 'text-gray-500'} />
+        <div className="flex-shrink-0 mr-4">
+            {!isUnlocked ? (
+                <div className="bg-gray-200 p-2 rounded-lg text-gray-400">
+                    <Lock size={20} />
+                </div>
             ) : (
-                <FileText size={20} className={isSelected ? 'text-[--emerald]' : 'text-gray-500'} />
+                <div className={`p-2 rounded-lg ${isSelected ? 'bg-emerald-100 text-[--emerald]' : 'bg-gray-100 text-gray-500'}`}>
+                    <PlayCircle size={20} />
+                </div>
             )}
         </div>
         <div className="flex-grow">
-            <p className={`text-sm font-semibold ${isSelected ? 'text-[--dark]' : 'text-gray-700'}`}>
+            <p className={`text-sm font-bold ${isSelected ? 'text-[--dark]' : 'text-gray-600'}`}>
                 {module.title}
             </p>
-            <p className="text-xs text-gray-500">{module.duration}</p>
+            <p className="text-xs text-gray-400 font-medium">{module.duration}</p>
         </div>
-        
-        <div className="ml-2 flex-shrink-0">
-            {module.completed ? (
-                <CheckCircle size={18} className="text-[--emerald]" title="Completed" />
-            ) : (
-                <Clock size={18} className="text-gray-400" title="Incomplete" />
-            )}
-        </div>
+        {isUnlocked && <CheckCircle size={16} className="text-[--emerald] ml-2" />}
     </div>
 );
 
-// Helper for the content display area
-const ContentPlayer = ({ module }) => {
+const ContentPlayer = ({ module, isUnlocked }) => {
     return (
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-gray-200">
-            <h3 className="text-2xl font-bold text-[--dark] mb-4">{module.title}</h3>
+        <div className="bg-white p-8 rounded-2xl shadow-soft border border-gray-100">
+            <h3 className="text-2xl font-black text-[--dark] mb-6">{module.title}</h3>
             
-            {/* Simulated Content Area (Video/PDF viewer) */}
-            <div className="w-full bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center mb-6" style={{ height: '350px' }}>
-                {module.type === 'Video' ? (
-                    <div className="text-white text-lg flex flex-col items-center">
-                        <PlayCircle size={48} className="text-white/80 mb-2" />
-                        <span className="text-sm">Video Player Placeholder</span>
-                        <span className="text-xs text-gray-400 mt-1">[{module.duration} content]</span>
+            <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-gray-900 flex items-center justify-center mb-8 group">
+                {!isUnlocked ? (
+                    <div className="text-center px-6">
+                        <div className="bg-white/10 p-4 rounded-full inline-block mb-4 backdrop-blur-md">
+                            <Lock size={40} className="text-white" />
+                        </div>
+                        <h4 className="text-white font-bold text-lg">Content Locked</h4>
+                        <p className="text-gray-400 text-sm mt-2 max-w-xs mx-auto">
+                            This course unlocks automatically after your Month {module.monthRequired} subscription renewal.
+                        </p>
                     </div>
                 ) : (
-                    <div className="text-white text-lg flex flex-col items-center">
-                        <FileText size={48} className="text-white/80 mb-2" />
-                        <span className="text-sm">PDF/Document Viewer Placeholder</span>
-                        <a href="#" className="mt-3 px-4 py-2 bg-[--emerald] text-white rounded-md text-sm hover:bg-green-700">
-                            Download Document
-                        </a>
+                    <div className="text-center space-y-4">
+                        <div className="w-20 h-20 bg-[--emerald] rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20 group-hover:scale-110 transition-transform">
+                            <Send size={32} className="text-white ml-1" />
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-white font-bold text-xl tracking-tight">Access Course on Telegram</p>
+                            <a 
+                                href={module.telegramLink} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="inline-block px-8 py-3 bg-[--emerald] text-white rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg"
+                            >
+                                Join Private Channel
+                            </a>
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* Description / Summary */}
-            <h4 className="text-xl font-semibold text-[--dark] mb-2">Module Summary</h4>
-            <p className="text-gray-700">{module.content}</p>
+            <div className="border-t border-gray-100 pt-6">
+                <h4 className="text-lg font-bold text-[--dark] mb-2 flex items-center gap-2">
+                    <AlertTriangle size={18} className="text-amber-500" />
+                    Security Notice
+                </h4>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                    Our masterclass videos are delivered via Telegram Private Channels to ensure high-speed streaming and content protection. 
+                    {isUnlocked 
+                        ? " Please do not share your unique invite link. Our system monitors member lists daily to match them with active subscriptions." 
+                        : " Once you renew your subscription for the required period, a unique entry link will appear above."}
+                </p>
+            </div>
         </div>
     );
 };

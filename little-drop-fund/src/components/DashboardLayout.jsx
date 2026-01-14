@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, Wallet, Clipboard, Settings, LogOut, X, Menu, Crown, Ticket, User, Bell } from "lucide-react";
 import { getUser, clearAuth } from "../utils/auth";
 import { dashboardService } from "../api/services";
-import logo from '../assets/logo.jpg'; 
+import logo from '../assets/logo.png'; 
 
 const baseNavItems = [
   { name: "Dashboard", icon: Home, path: "/app" },
@@ -66,10 +66,9 @@ export default function DashboardLayout({ children }) {
   const Sidebar = () => (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="p-6 border-b border-gray-700/50">
-        <div className="flex items-center gap-2">
-                    <img src={logo} alt="LDF" className="h-10 w-10 rounded-lg shadow-sm" />
-                    <span className="font-black text-white tracking-tighter hidden sm:block uppercase">LDF Capital</span>
-                </div>
+        <div className="flex items-center justify-center gap-2">
+                    <img src={logo} alt="LDF" className="h-14.5 w-24  rounded-lg shadow-sm" />
+        </div>
       </div>
       
       <nav className="flex-grow p-4 space-y-2">

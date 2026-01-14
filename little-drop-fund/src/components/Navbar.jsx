@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Menu, X, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 // 🛑 FIX: Renamed the imported asset variable to 'logo'
-import logo from '../assets/logo.jpg';
+import logo from '../assets/logo.png';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -28,11 +28,38 @@ export default function Navbar() {
     <nav className="fixed w-full top-0 left-0 bg-white border-b border-gray-100 shadow-soft z-50 transition-fast">
       <div className="max-w-7xl mx-auto flex justify-between items-center px-6 h-20">
 
-        {/* LOGO */}
-        <div className="flex items-center text-xl font-bold text-[--dark]">
-          <img src={logo} alt="LDF Logo" className="h-8 md:h-10 w-auto" />
-          <span className="ml-2 uppercase tracking-tight">LITTLE DROP FUND</span>
-        </div>
+{/* LOGO */}
+<div 
+  className="flex items-center gap-2 md:gap-3 cursor-pointer select-none" 
+  onClick={() => navigate('/')}
+>
+  {/* Logo Icon: Scales from 2.5rem on mobile to 3.5rem on desktop */}
+  <img 
+    src={logo} 
+    alt="LDF Logo" 
+    className="h-10 w-10 md:h-14 md:w-14 object-contain flex-shrink-0" 
+  />
+  
+  {/* Text Container: Uses flex-col to stack the title and tagline */}
+  <div className="flex flex-col justify-center leading-tight">
+    {/* Main Title: Responsive font size and tight tracking */}
+    <h1 className="text-base sm:text-lg md:text-2xl font-black tracking-tighter text-[#48842c] uppercase whitespace-nowrap">
+      Little Drop Fund
+    </h1>
+    
+    {/* Tagline Pill: Adjusts padding and font based on screen size */}
+    <div className="flex items-center bg-[#48842c] px-1.5 py-0.5 md:px-3 md:py-1 rounded-full w-fit">
+      {/* Decorative Line: Only shows on tablet/desktop to save space on mobile */}
+      <div className="hidden sm:block h-[1px] w-2 md:w-4 bg-white/60 mr-1.5"></div>
+      
+      <span className="text-[8px] sm:text-[9px] md:text-[11px] font-bold text-white uppercase tracking-[0.05em] whitespace-nowrap">
+        Small Drops, Big Wealth
+      </span>
+      
+      <div className="hidden sm:block h-[1px] w-2 md:w-4 bg-white/60 ml-1.5"></div>
+    </div>
+  </div>
+</div>
 
         {/* DESKTOP MENU */}
         <div className="hidden md:flex items-center space-x-8 text-gray-600 font-medium">
