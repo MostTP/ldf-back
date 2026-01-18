@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { dashboardService } from '../../api/services';
 import PaymentModal from '../../components/PaymentModal';
-import logo from '../../assets/logo.png';
 
 export default function DashboardHome() {
     const navigate = useNavigate();
@@ -22,10 +21,6 @@ export default function DashboardHome() {
     const [showPayment, setShowPayment] = useState(false);
     const [copySuccess, setCopySuccess] = useState(false);
     
-    // UI Dropdown States
-    const [showNotifications, setShowNotifications] = useState(false);
-    const [showProfileMenu, setShowProfileMenu] = useState(false);
-
     const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
     const [lastPurchaseQty, setLastPurchaseQty] = useState(0);
 
@@ -89,12 +84,8 @@ export default function DashboardHome() {
     const estMonthlyProfit = totalInvested * 0.15; // Calculated example at 15%
 
     return (
-        <div className="relative p-6 md:p-10 bg-gray-50 min-h-screen pt-24">
+        <div className="relative p-6 md:p-10 bg-gray-50 min-h-screen pt-35">
             
-            <div className="flex justify-center mb-10 w-full">
-                <img src={logo} alt="LDF Logo" className="h-20 md:h-30 w-auto rounded-2xl shadow-md border-2 border-white" />
-            </div>
-
             {/* Header & Referral Link Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div className="lg:col-span-2">
@@ -164,8 +155,43 @@ export default function DashboardHome() {
                 </div>
             </div>
 
+             {/* Matrix Progression */}
+            <div className="mb-10 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><Layers size={20} className="text-emerald-500" /> Matrix Progression</h3>
+                <div className="flex flex-col md:flex-row gap-6 items-center justify-between px-4">
+                    <MatrixStep level="1" status="completed" slots="5/5" />
+                    <div className="hidden md:block h-0.5 bg-green-200 flex-1"></div>
+                    <MatrixStep level="2" status="current" slots={`${stats?.slotsFilled || 0}/5`} />
+                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
+                    <MatrixStep level="3" status="locked" slots="0/5" />
+                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
+                    <MatrixStep level="4" status="locked" slots="0/5" />
+                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
+                    <MatrixStep level="5" status="locked" slots="0/5" />
+                </div>
+            </div>
+            
+
             {/* Premium Investment Wallet Section */}
             <div className="mb-10 bg-indigo-950 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden border border-white/10">
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+
+                    <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Users size={20} className="text-blue-500" /> Team Metrics</h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+
+                        <MetricBox label="Direct Referrals" value={stats?.directReferrals || 0} />
+
+                        <MetricBox label="Total Team Size" value={stats?.totalTeam || 0} />
+
+                        <MetricBox label="Spillover" value={stats?.spillover || 0} />
+
+                        <MetricBox label="Slots Filled" value={`${stats?.slotsFilled || 0}/3905`} />
+
+                    </div>
+
+                </div>
                 <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
                     <Crown size={140} />
                 </div>
@@ -210,22 +236,6 @@ export default function DashboardHome() {
                 </div>
             </div>
 
-            {/* Matrix Progression */}
-            <div className="mb-10 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><Layers size={20} className="text-emerald-500" /> Matrix Progression</h3>
-                <div className="flex flex-col md:flex-row gap-6 items-center justify-between px-4">
-                    <MatrixStep level="1" status="completed" slots="5/5" />
-                    <div className="hidden md:block h-0.5 bg-green-200 flex-1"></div>
-                    <MatrixStep level="2" status="current" slots={`${stats?.slotsFilled || 0}/5`} />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="3" status="locked" slots="0/5" />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="4" status="locked" slots="0/5" />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="5" status="locked" slots="0/5" />
-                </div>
-            </div>
-
             {/* Quick Access Footer */}
             <div className="mt-12 pt-8 border-t border-gray-200 pb-10">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 uppercase">Quick Resources</h3>
@@ -235,6 +245,7 @@ export default function DashboardHome() {
                     <FooterTile icon={<Send size={22}/>} title="Telegram" desc="Community" color="bg-sky-50 text-sky-600" link="https://t.me/YOUR_CHANNEL" />
                     <FooterTile icon={<ImageIcon size={22}/>} title="Marketing" desc="Banners" color="bg-orange-50 text-orange-600" onClick={() => navigate('/app/marketing')} />
                 </div>
+                <p>{error}</p>
             </div>
 
             {/* Success Overlay */}
