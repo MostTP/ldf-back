@@ -5,10 +5,18 @@ import axios from 'axios';
 // Can be overridden with VITE_API_BASE_URL environment variable
 // Ensure base URL always ends with /api/
 let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/';
+
+// Force HTTP for localhost (prevent HTTPS protocol errors)
+if (baseURL.includes('localhost') && baseURL.startsWith('https://')) {
+  baseURL = baseURL.replace('https://', 'http://');
+}
+
 if (baseURL && !baseURL.endsWith('/api/')) {
   // If it doesn't end with /api/, add it
   baseURL = baseURL.replace(/\/+$/, '') + '/api/';
 }
+
+console.log('API Base URL:', baseURL); // Debug log
 
 const api = axios.create({
   baseURL,
