@@ -19,14 +19,14 @@ export default function CTA({ onOpenSignup }) {
 
         <p className="text-lg opacity-80 mb-10 max-w-2xl mx-auto">
           Join thousands already building streams of income with Little Drop Fund.
-          A one-time activation of ₦3,000 unlocks lifetime opportunities and product access.
+          A one-time activation of ₦5,000 unlocks lifetime opportunities and product access.
         </p>
 
         <button
           onClick={onOpenSignup}
           className="px-10 py-4 bg-white text-[--emerald] font-bold rounded-lg shadow-xl shadow-green-500/20 text-xl hover:bg-gray-100 transition-fast"
         >
-          Unlock Masterclass & Join Now (₦3,000)
+          Unlock Masterclass & Join Now (₦5,000)
         </button>
       </div>
     </section>

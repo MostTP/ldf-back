@@ -13,7 +13,8 @@ import AgentsPage from "./pages/AgentsPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsAndConditions from "./pages/TermsAndConditions"; 
 import BackToTopButton from "./components/BackToTopButton"; 
-import ForgotPassword from "./pages/ForgotPassword"; // 🛑 NEW IMPORT FOR PASSWORD RESET
+import ForgotPassword from "./pages/ForgotPassword"; 
+import Leaderboard from "./pages/Leaderboard";
 
 // --- DASHBOARD CONTENT PAGES (Ensure these files exist in src/pages/Dashboard) ---
 import DashboardHome from "./pages/Dashboard/DashboardHome";
@@ -48,6 +49,7 @@ const AppRoutes = () => (
  <Route path="agent" element={<AgentDashboard />} />
  <Route path="premium" element={<div>Premium Upgrade Page (Coming Soon)</div>} />
 
+
  {/* Catch-all for dashboard errors */}
  <Route path="*" element={<div>404 Dashboard Page Not Found</div>} />
  </Routes>
@@ -73,6 +75,7 @@ export default function App() {
  <Route path="/terms" element={<TermsAndConditions />} /> 
  {/* AUTHENTICATED ROUTES */}
  <Route path="/app/*" element={<AppRoutes />} />
+ <Route path="/leaderboard" element={<Leaderboard />} />
  
  {/* Catch-all for non-existent public pages */}
  <Route path="*" element={<div>404 Page Not Found</div>} />

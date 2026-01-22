@@ -30,8 +30,8 @@ export default function GrowthStreams() {
  {
  number: 1,
  title: 'Register & Unlock',
- description: 'Register and unlock the LDF Financial Freedom Starter Kit (Masterclass) for just ₦3,000.',
- value: 'Value: Stock Market Investing Guide',
+ description: 'Register and unlock the LDF Financial Freedom Starter Kit (Masterclass) for just ₦5,000.',
+ value: 'Value: Premium Advance Courses and Income Generator Portal',
       icon: <CheckSquare size={20} />,
       color: 'bg-blue-600',
  },
@@ -46,7 +46,7 @@ export default function GrowthStreams() {
  {
  number: 3,
  title: 'Engage & Share',
- description: 'Choose to be a Team Builder (₦1,000 instant referral bonus) or an Active Learner (eligible for Global Pool).',
+ description: 'Choose to be a Community Builder (₦2,500 instant Affiliate Income) or an Active Learner (eligible for Global Pool).',
  value: 'Choose Your Income Path',
       icon: <Users size={20} />,
       color: 'bg-yellow-600',
@@ -54,7 +54,8 @@ export default function GrowthStreams() {
  {
  number: 4,
  title: 'Earn & Grow',
- description: 'Earn through direct referrals, matrix level bonuses, Global Pool dividends, or Premium Investment ROI.', value: 'Multiple Income Streams',
+ description: 'Earn through AFFILIATE ICOME, Global Pool dividends and other source of income on this learning platform',
+ value: 'Multiple Income Streams',
       icon: <DollarSign size={20} />,
       color: 'bg-[--emerald]',
  },

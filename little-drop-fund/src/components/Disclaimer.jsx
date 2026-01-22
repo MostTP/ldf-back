@@ -23,7 +23,7 @@ export default function Disclaimer() {
           Little Drop Fund is an **educational and community platform**, not an investment firm or financial institution. 
           It is **not a get-rich-quick scheme.** All potential rewards are generated from the activity and growth of the community, not passive financial investments. 
           <br /><br />
-          **Active Earnings (Referrals/Matrix) are strictly performance-based** and depend on personal participation and team activity. Passive rewards (Global Dividend Pool) are variable and depend on the success and ROI of the community-managed ventures; therefore, payouts are not guaranteed. The optional Premium Investment Tier carries inherent risks, and past performance is not indicative of future results. Participate responsibly.
+          Active Earnings (Referrals/Matrix) are strictly performance-based** and depend on personal participation and team activity. Passive rewards (Global Dividend Pool) are variable and depend on the success and ROI of the community-managed ventures; therefore, payouts are not guaranteed.
         </p>
       </div>
     </section>

@@ -13,9 +13,12 @@
     "@tailwindcss/vite": "^4.1.17",
     "axios": "^1.13.2",
     "canvas-confetti": "^1.9.4",
+    "libphonenumber-js": "^1.12.35",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-icons": "^5.5.0",
+    "react-phone-input-2": "^2.15.1",
     "react-router-dom": "^7.10.0"
   },
   "devDependencies": {

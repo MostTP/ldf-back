@@ -4,43 +4,43 @@ import { Quote } from "lucide-react";
 import SectionCard from './SectionCard'; 
 
 export default function Testimonials() {
-  // Assuming useScrollAnimation hook is available and working
-  const ref = useScrollAnimation ? useScrollAnimation() : null; 
+ // Assuming useScrollAnimation hook is available and working
+ const ref = useScrollAnimation ? useScrollAnimation() : null; 
 
-  const quotes = [
-    {
-      quote: "The Masterclass alone is worth the ₦3,000. The earning potential is just a huge bonus.",
-      name: "Aisha M.",
-      location: "Lagos, NG",
-      initial: "A",
-      bgColor: "bg-gray-200"
-    },
-    {
-      quote: "I didn’t recruit anyone my first month and was amazed to receive the Global Pool payout.",
-      name: "Tunde O.",
-      location: "Abuja, NG",
-      initial: "T",
-      bgColor: "bg-amber-100" // Subtle use of amber/gold
-    },
-    {
-      quote: "The Matrix spillover really works. I'm earning passively while I focus on the Premium Investment.",
-      name: "Nkechi P.",
-      location: "Port Harcourt, NG",
-      initial: "N",
-      bgColor: "bg-[--emerald]/10" // Subtle use of emerald
-    },
-  ];
+ const quotes = [
+ {
+ quote: "The Masterclass alone is worth the ₦5,000. The earning potential is just a huge bonus.",
+ name: "Aisha M.",
+ location: "Lagos, NG",
+ initial: "A",
+ bgColor: "bg-gray-200"
+ },
+ {
+ quote: "I didn't recruit anyone my first month and was amazed to receive the Global Pool payout.",
+ name: "Tunde O.",
+ location: "Abuja, NG",
+ initial: "T",
+ bgColor: "bg-amber-100" // Subtle use of amber/gold
+ },
+ {
+ quote: "The Masterclass is worth more than the #5,000. The earning potential is just a huge bonus.",
+ name: "Nkechi P.",
+ location: "Port Harcourt, NG",
+ initial: "N",
+ bgColor: "bg-[--emerald]/10" // Subtle use of emerald
+ },
+ ];
 
-  return (
-    <section id="testimonials" ref={ref} className="animate-section py-20 px-6 bg-white">
-      <div className="max-w-6xl mx-auto text-center">
-        <h2 className="text-3xl md:text-4xl font-extrabold text-[--dark] mb-12">
-          Impactful Quotes
-        </h2>
+ return (
+ <section id="testimonials" ref={ref} className="animate-section py-20 px-6 bg-white">
+ <div className="max-w-6xl mx-auto text-center">
+ <h2 className="text-3xl md:text-4xl font-extrabold text-[--dark] mb-12">
+ Impactful Quotes
+ </h2>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          {quotes.map((q, index) => (
-            <SectionCard 
+ <div className="grid md:grid-cols-3 gap-8">
+ {quotes.map((q, index) => (
+ <SectionCard 
  key={index}
  className="p-8 text-left h-full flex flex-col" // Added flex-col for flex-grow to work
  borderEmphasis="left" // Correctly pass attributes
@@ -62,11 +62,11 @@ export default function Testimonials() {
  <h4 className="font-semibold text-[--dark]">{q.name}</h4>
  <p className="text-sm text-gray-500">{q.location}</p>
  </div>
-              </div>
-            </SectionCard>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
+ </div>
+ </SectionCard>
+ ))}
+ </div>
+</div>
+ </section>
+);
 }

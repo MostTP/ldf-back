@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Lock, Mail, User, Phone, Code, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { authService } from "../api/services"; 
 import { useNavigate, Link } from "react-router-dom"; 
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+import { isValidPhoneNumber } from "libphonenumber-js";
+
+
 
 // =========================================================================
 // 1. HELPER COMPONENTS
@@ -62,6 +67,9 @@ export default function SignupForm() {
   const [errors, setErrors] = useState({}); 
   const [error, setError] = useState(null); 
   const [success, setSuccess] = useState(false);
+  const [phone, setPhone] = useState("");
+  const isValid = isValidPhoneNumber("+" + phone);
+  const isPhoneValid = phone.length > 8;
 
   // Regex Definitions
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -166,23 +174,37 @@ export default function SignupForm() {
           <InputField icon={<User size={18} />} placeholder="First Name *" name="firstName" onChange={handleInputChange} value={formData.firstName || ''} error={errors.firstName} />
           <InputField icon={<User size={18} />} placeholder="Last Name *" name="lastName" onChange={handleInputChange} value={formData.lastName || ''} error={errors.lastName} />
           <InputField icon={<Mail size={18} />} placeholder="Email Address *" name="email" type="email" onChange={handleInputChange} value={formData.email || ''} error={errors.email} />
-          
-          <InputField 
-            icon={<Phone size={18} />} 
-            placeholder="Phone Number (WhatsApp) *" 
-            name="phone" 
-            type="tel" 
-            onChange={handleInputChange} 
-            value={formData.phone || ''} 
-            error={errors.phone} 
-            hint="Format: 08012345678 or +234..."
-          />
+         <div className="space-y-1">
+  <label className="text-xs font-bold text-gray-600 uppercase">
+    Phone Number
+  </label>
+
+  <PhoneInput
+    country={"ng"}
+    enableSearch={true}
+    onlyCountries={[
+      "ng", "gh", "ke", "za", "eg", "tz", "ug", "rw", "cm", "sn",
+      "dz", "ma", "ci", "et", "zm", "zw", "bw", "na", "mw", "sl"
+    ]}
+    value={phone}
+    onChange={(value) => setPhone(value)}
+    inputClass="!w-full !h-12 !pl-14 !text-sm !border !border-gray-300 !rounded-xl focus:!border-emerald-500 focus:!ring-emerald-500"
+    buttonClass="!border-gray-300 !rounded-l-xl"
+    dropdownClass="!z-[9999]"
+    containerClass="!w-full"
+  />
+
+  <p className="text-[10px] text-gray-500">
+    Select your country code before entering your number
+  </p>
+</div>
+
 
           <InputField icon={<User size={18} />} placeholder="Desired Username *" name="username" onChange={handleInputChange} hint="Must be unique, 6-15 characters." value={formData.username || ''} error={errors.username} />
           <InputField icon={<Code size={18} />} placeholder="LDF-Starter" name="ldfStarterCode" onChange={handleInputChange} hint="Auto-filled from an affiliate link." value={formData.ldfStarterCode || ''} />
 
           <div>
-            <InputField icon={<Code size={18} />} placeholder="Activation Coupon Code (₦3,000) *" name="coupon" onChange={handleInputChange} value={formData.coupon || ''} error={errors.coupon} />
+            <InputField icon={<Code size={18} />} placeholder="Activation Coupon Code (₦5,000) *" name="coupon" onChange={handleInputChange} value={formData.coupon || ''} error={errors.coupon} />
             <div className="text-right text-sm">
               <Link to="/agents" className="text-[--emerald] hover:underline font-bold">Click here to get your coupon code</Link>
             </div>
