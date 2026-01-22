@@ -80,8 +80,10 @@ export default function DashboardHome() {
 
     const userFirstName = profile?.username || 'User';
     const activeSlots = stats?.premiumSlots || 0;
-    const totalInvested = activeSlots * 10000;
-    const estMonthlyProfit = totalInvested * 0.15; // Calculated example at 15%
+    const totalInvested = stats?.totalInvested || 0; // From API
+    const estMonthlyProfit = stats?.estMonthlyProfit || 0; // From API
+    const estMonthlyProfitMin = stats?.estMonthlyProfitMin || 0;
+    const estMonthlyProfitMax = stats?.estMonthlyProfitMax || 0;
 
     return (
         <div className="relative p-6 md:p-10 bg-gray-50 min-h-screen pt-35">
@@ -91,7 +93,7 @@ export default function DashboardHome() {
                 <div className="lg:col-span-2">
                     <h1 className="text-3xl font-bold text-gray-900">Welcome, {userFirstName}!</h1>
                     <div className="flex gap-3 mt-2">
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider">Status: Active</span>
+                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider">Status: {stats?.userStatus || 'Active'}</span>
                         <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold uppercase tracking-wider">Matrix: {stats?.matrixLevel || 'Level 1'}</span>
                     </div>
 
@@ -158,17 +160,69 @@ export default function DashboardHome() {
              {/* Matrix Progression */}
             <div className="mb-10 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><Layers size={20} className="text-emerald-500" /> Matrix Progression</h3>
-                <div className="flex flex-col md:flex-row gap-6 items-center justify-between px-4">
-                    <MatrixStep level="1" status="completed" slots="5/5" />
-                    <div className="hidden md:block h-0.5 bg-green-200 flex-1"></div>
-                    <MatrixStep level="2" status="current" slots={`${stats?.slotsFilled || 0}/5`} />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="3" status="locked" slots="0/5" />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="4" status="locked" slots="0/5" />
-                    <div className="hidden md:block h-0.5 bg-gray-200 flex-1"></div>
-                    <MatrixStep level="5" status="locked" slots="0/5" />
-                </div>
+                {(() => {
+                    // Calculate matrix progression dynamically based on direct referrals
+                    // Matrix structure (matches backend):
+                    // Level 1: 0-1 referrals (2 slots max)
+                    // Level 2: 2-3 referrals (4 slots max)
+                    // Level 3: 4-7 referrals (8 slots max)
+                    // Level 4: 8-15 referrals (16 slots max)
+                    // Level 5: 16+ referrals (32 slots max)
+                    const directReferrals = stats?.directReferrals ?? 0;
+                    const currentLevelSlotsFilled = stats?.currentLevelSlotsFilled ?? 0;
+                    const matrixLevel = stats?.matrixLevel || 'Level 1';
+                    const currentLevelNum = parseInt(matrixLevel.replace('Level ', '')) || 1;
+                    
+                    const getMatrixProgression = () => {
+                        const levels = [
+                            { level: 1, minReferrals: 0, maxReferrals: 1, maxSlots: 2 },
+                            { level: 2, minReferrals: 2, maxReferrals: 3, maxSlots: 4 },
+                            { level: 3, minReferrals: 4, maxReferrals: 7, maxSlots: 8 },
+                            { level: 4, minReferrals: 8, maxReferrals: 15, maxSlots: 16 },
+                            { level: 5, minReferrals: 16, maxReferrals: Infinity, maxSlots: 32 },
+                        ];
+                        
+                        return levels.map((l) => {
+                            let slotsFilled = 0;
+                            let status = 'locked';
+                            
+                            if (l.level < currentLevelNum) {
+                                // Previous level - completed
+                                status = 'completed';
+                                slotsFilled = l.maxSlots;
+                            } else if (l.level === currentLevelNum) {
+                                // Current level
+                                status = 'current';
+                                slotsFilled = currentLevelSlotsFilled;
+                            } else {
+                                // Future level - locked
+                                status = 'locked';
+                                slotsFilled = 0;
+                            }
+                            
+                            return {
+                                level: l.level,
+                                status,
+                                slots: `${slotsFilled}/${l.maxSlots}`
+                            };
+                        });
+                    };
+                    
+                    const matrixProgression = getMatrixProgression();
+                    
+                    return (
+                        <div className="flex flex-col md:flex-row gap-6 items-center justify-between px-4">
+                            {matrixProgression.map((prog, index) => (
+                                <React.Fragment key={prog.level}>
+                                    <MatrixStep level={prog.level.toString()} status={prog.status} slots={prog.slots} />
+                                    {index < matrixProgression.length - 1 && (
+                                        <div className={`hidden md:block h-0.5 flex-1 ${prog.status === 'completed' ? 'bg-green-200' : prog.status === 'current' ? 'bg-blue-200' : 'bg-gray-200'}`}></div>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    );
+                })()}
             </div>
             
 
@@ -187,7 +241,7 @@ export default function DashboardHome() {
 
                         <MetricBox label="Spillover" value={stats?.spillover || 0} />
 
-                        <MetricBox label="Slots Filled" value={`${stats?.slotsFilled || 0}/3905`} />
+                        <MetricBox label="Slots Filled" value={`${stats?.slotsFilled || 0}/${stats?.maxSlots || 2}`} />
 
                     </div>
 
@@ -215,7 +269,11 @@ export default function DashboardHome() {
                         <div className="bg-white/5 p-5 rounded-xl border border-white/10">
                             <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Est. Monthly Profit</p>
                             <h4 className="text-3xl font-black mt-1">₦{estMonthlyProfit.toLocaleString()}</h4>
-                            <p className="text-[10px] mt-2 text-white/50 italic">Based on 10% - 20% performance</p>
+                            <p className="text-[10px] mt-2 text-white/50 italic">
+                                {estMonthlyProfitMin > 0 && estMonthlyProfitMax > 0 
+                                    ? `Range: ₦${estMonthlyProfitMin.toLocaleString()} - ₦${estMonthlyProfitMax.toLocaleString()}`
+                                    : 'Based on 10% - 20% performance'}
+                            </p>
                         </div>
 
                         <div className="flex flex-col justify-center gap-3">
