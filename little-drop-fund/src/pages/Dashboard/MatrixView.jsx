@@ -112,12 +112,12 @@ export default function MatrixView() {
                     <MatrixNode name={data.username} isYou={true} />
                     <div className="w-px h-6 bg-gray-400 my-2"></div>
                     
-                    {/* Level 1 Downline (from matrix tree) */}
+                    {/* Level 1 Downline (max 5, overflow goes to L2) */}
                     <div className="flex justify-center w-full flex-wrap gap-6">
                         {(data.tree?.level1 || []).length === 0 ? (
-                            <p className="text-sm text-gray-500">No direct team members yet. Your first two referrals will appear here.</p>
+                            <p className="text-sm text-gray-500">No direct team members yet. Your first 5 referrals will appear here at L1.</p>
                         ) : (
-                            data.tree.level1.map((member) => (
+                            data.tree.level1.slice(0, 5).map((member) => (
                                 <div key={member.id} className="flex flex-col items-center">
                                     <MatrixNode name={member.displayName} level={1} />
                                     {/* Level 2 children for this member */}

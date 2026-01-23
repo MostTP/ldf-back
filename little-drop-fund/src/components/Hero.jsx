@@ -30,7 +30,7 @@ export default function Hero(){
  </p>
 
  <div className="mt-6 flex gap-4 flex-wrap">
- <button onClick={() => navigate("/signup")} className="px-6 py-3 bg-yellow-400 text-black rounded-xl font-semibold shadow hover:bg-yellow-300 transition">Join Now — ₦3,000</button>
+ <button onClick={() => navigate("/signup")} className="px-6 py-3 bg-yellow-400 text-black rounded-xl font-semibold shadow hover:bg-yellow-300 transition">Join Now — ₦5,000</button>
  <button onClick={() => document.getElementById('how-it-works')?.scrollIntoView({behavior:'smooth'})} className="px-6 py-3 bg-white/10 border border-white/20 text-white rounded-xl font-semibold hover:bg-white/5 transition">How It Works</button>
  </div>
  </div>
@@ -39,7 +39,7 @@ export default function Hero(){
  <div className="flex justify-center md:justify-end order-last pt-10 md:pt-0"> 
  <div className="bg-white/5 rounded-3xl p-6 w-full max-w-xs sm:max-w-sm lg:max-w-md transform transition-all shadow-xl"> 
  <div className="w-full h-56 bg-gradient-to-br from-emerald-500 to-yellow-400 rounded-lg mb-4" />
- <h4 className="font-bold text-lg text-white">Start with ₦3,000</h4>
+ <h4 className="font-bold text-lg text-white">Start with ₦5,000</h4>
  <p className="text-gray-300 mt-2">Activate your account and get a coupon to join the community. Invite friends and start earning.</p>
  </div>
  </div>

@@ -76,6 +76,11 @@ export const dashboardService = {
     const response = await api.get('/dashboard/profile');
     // Return the data directly (axios already unwraps response.data)
     return response.data;
+  },
+
+  getDirectReferrals: async () => {
+    const response = await api.get('/dashboard/referrals');
+    return response.data;
   }
 };
 
@@ -249,11 +254,11 @@ export const matrixService = {
         filledSpots: stats.directReferrals || 0,
         potentialEarning: stats.totalEarnings || 0,
         matrixLevels: [
-          { level: 1, required: 2, current: Math.min(stats.directReferrals || 0, 2), status: (stats.directReferrals || 0) >= 2 ? 'Completed' : 'In Progress', bonus: 200 },
-          { level: 2, required: 4, current: 0, status: 'In Progress', bonus: 100 },
-          { level: 3, required: 8, current: 0, status: 'In Progress', bonus: 70 },
-          { level: 4, required: 16, current: 0, status: 'In Progress', bonus: 60 },
-          { level: 5, required: 32, current: 0, status: 'In Progress', bonus: 70 },
+          { level: 1, required: 5, current: Math.min(stats.totalActiveDownline || 0, 5), status: (stats.totalActiveDownline || 0) >= 5 ? 'Completed' : 'In Progress', bonus: 100 },
+          { level: 2, required: 25, current: Math.min(Math.max(0, (stats.totalActiveDownline || 0) - 5), 25), status: (stats.totalActiveDownline || 0) >= 25 ? 'Completed' : 'In Progress', bonus: 70 },
+          { level: 3, required: 125, current: Math.min(Math.max(0, (stats.totalActiveDownline || 0) - 30), 125), status: (stats.totalActiveDownline || 0) >= 125 ? 'Completed' : 'In Progress', bonus: 60 },
+          { level: 4, required: 625, current: Math.min(Math.max(0, (stats.totalActiveDownline || 0) - 155), 625), status: (stats.totalActiveDownline || 0) >= 625 ? 'Completed' : 'In Progress', bonus: 70 },
+          { level: 5, required: 3125, current: Math.min(Math.max(0, (stats.totalActiveDownline || 0) - 780), 3125), status: (stats.totalActiveDownline || 0) >= 3125 ? 'Completed' : 'In Progress', bonus: 200 },
         ],
         tree: matrixTree || null,
       };

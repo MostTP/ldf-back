@@ -16,12 +16,12 @@ export default function FAQ() {
     {
       question: "How much is activation?",
       answer:
-        "You activate your account with a one-time ₦3,000 coupon. This is the only cost, and it grants you lifetime access to the product and earning system."
+        "You activate your account with a one-time ₦5,000 coupon. This is the only cost, and it grants you lifetime access to the product and earning system."
     },
     {
       question: "How do I earn?",
       answer:
-        "You earn through three main streams: 1) Direct Referrals (₦1,000 instant bonus), 2) Matrix Bonuses (up to 5 levels deep), and 3) Global Pool Payouts (monthly dividends for all active members)."
+        "You earn through three main streams: 1) Direct Referrals (₦2,500 instant bonus), 2) Matrix Bonuses (up to 5 levels deep), and 3) Global Pool Payouts (monthly dividends for all active members)."
     },
     {
       question: "Is this a loan or investment company?",

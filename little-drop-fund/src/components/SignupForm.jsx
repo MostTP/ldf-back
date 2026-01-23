@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Lock, Mail, User, Phone, Code, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { authService } from "../api/services"; 
-import { useNavigate, Link } from "react-router-dom"; 
+import { useNavigate, Link, useSearchParams } from "react-router-dom"; 
 
 // =========================================================================
 // 1. HELPER COMPONENTS
@@ -57,6 +57,7 @@ const CheckboxField = ({ children, name, onChange, checked }) => (
 
 export default function SignupForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({}); 
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({}); 
@@ -65,7 +66,18 @@ export default function SignupForm() {
 
   // Regex Definitions
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  const phoneRegex = /^(?:\+234|0)[789][01]\d{8}$/;
+  // Phone regex for African countries (Nigeria, Ghana, Kenya, South Africa, Uganda, Tanzania, etc.)
+  // Accepts: +234, +233, +254, +27, +256, +255, +251, +212, +20, +213, +220, +221, +224, +225, +226, +227, +228, +229, +230, +231, +232, +235, +236, +237, +238, +239, +240, +241, +242, +243, +244, +245, +246, +248, +249, +250, +252, +253, +257, +258, +260, +261, +262, +263, +264, +265, +266, +267, +268, +269, +290, +291, +297, +298
+  // Also accepts local formats starting with 0
+  const phoneRegex = /^(\+?2[0-9]{2}|0)[1-9]\d{7,9}$/;
+
+  // Read referral code from URL parameter on component mount
+  useEffect(() => {
+    const refParam = searchParams.get('ref');
+    if (refParam) {
+      setFormData(prev => ({ ...prev, ldfStarterCode: refParam.trim() }));
+    }
+  }, [searchParams]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -75,7 +87,7 @@ export default function SignupForm() {
 
     // Live validation logic
     if (name === 'phone' && value.length > 5) {
-      if (!phoneRegex.test(value)) currentError = "Invalid format (use 080... or +234...)";
+      if (!phoneRegex.test(value)) currentError = "Invalid format (use country code +XXX or local format)";
     }
 
     if (name === 'email' && value.length > 5) {
@@ -140,8 +152,41 @@ export default function SignupForm() {
       setSuccess(true);
       setTimeout(() => navigate('/login'), 3000); 
     } catch (err) {
-      const errorMessage = err.response ? err.response.data.message || 'Registration failed.' : 'Network error.';
-      setError(errorMessage);
+      if (err.response && err.response.data) {
+        // Show detailed validation errors if available
+        if (err.response.data.errors && Array.isArray(err.response.data.errors)) {
+          const validationErrors = err.response.data.errors.map(e => e.msg || e.message).join(', ');
+          setError(`Validation failed: ${validationErrors}`);
+          
+          // Also set field-specific errors
+          const fieldErrors = {};
+          err.response.data.errors.forEach(error => {
+            if (error.param) {
+              // Map backend field names to frontend field names
+              const fieldMap = {
+                'firstName': 'firstName',
+                'lastName': 'lastName',
+                'email': 'email',
+                'phone': 'phone',
+                'username': 'username',
+                'password': 'password',
+                'confirmPassword': 'confirmPassword',
+                'couponCode': 'coupon',
+                'termsAccepted': 'agreeTerms',
+                'riskDisclosureAccepted': 'agreeRisk',
+                'couponAcknowledged': 'acknowledgeRefund',
+              };
+              const frontendField = fieldMap[error.param] || error.param;
+              fieldErrors[frontendField] = error.msg || error.message;
+            }
+          });
+          setErrors(prev => ({ ...prev, ...fieldErrors }));
+        } else {
+          setError(err.response.data.message || 'Registration failed.');
+        }
+      } else {
+        setError('Network error. Please check your connection and try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -175,14 +220,14 @@ export default function SignupForm() {
             onChange={handleInputChange} 
             value={formData.phone || ''} 
             error={errors.phone} 
-            hint="Format: 08012345678 or +234..."
+            hint="Format: Country code +XXX or local format (e.g., +234, +233, +254)"
           />
 
           <InputField icon={<User size={18} />} placeholder="Desired Username *" name="username" onChange={handleInputChange} hint="Must be unique, 6-15 characters." value={formData.username || ''} error={errors.username} />
           <InputField icon={<Code size={18} />} placeholder="LDF-Starter" name="ldfStarterCode" onChange={handleInputChange} hint="Auto-filled from an affiliate link." value={formData.ldfStarterCode || ''} />
 
           <div>
-            <InputField icon={<Code size={18} />} placeholder="Activation Coupon Code (₦3,000) *" name="coupon" onChange={handleInputChange} value={formData.coupon || ''} error={errors.coupon} />
+            <InputField icon={<Code size={18} />} placeholder="Activation Coupon Code (₦5,000) *" name="coupon" onChange={handleInputChange} value={formData.coupon || ''} error={errors.coupon} />
             <div className="text-right text-sm">
               <Link to="/agents" className="text-[--emerald] hover:underline font-bold">Click here to get your coupon code</Link>
             </div>

@@ -22,6 +22,7 @@ import WalletPage from "./pages/Dashboard/WalletPage";
 import SettingsPage from "./pages/Dashboard/SettingsPage";
 import MasterclassAccess from "./pages/Dashboard/MasterclassAccess";
 import AgentDashboard from "./pages/Dashboard/AgentDashboard";
+import ReferralsPage from "./pages/Dashboard/ReferralsPage";
 
 
 // Authentication check using utility
@@ -39,6 +40,7 @@ const AppRoutes = () => (
  <Routes>
  <Route path="/" element={<DashboardHome />} />
  <Route path="matrix" element={<MatrixView />} />
+ <Route path="referrals" element={<ReferralsPage />} />
  <Route path="earnings" element={<WalletPage />} /> 
  <Route path="wallet" element={<WalletPage />} /> 
  <Route path="masterclass" element={<MasterclassAccess />} />
@@ -65,7 +67,8 @@ export default function App() {
  <Route path="/" element={<LandingPage />} /> 
  <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} /> {/* 🛑 NEW ROUTE ADDED */}
- <Route path="/signup" element={<SignupPage />} /> 
+ <Route path="/signup" element={<SignupPage />} />
+ <Route path="/register" element={<SignupPage />} /> 
  <Route path="/agents" element={<AgentsPage />} /> 
  
  {/* LEGAL ROUTES */}

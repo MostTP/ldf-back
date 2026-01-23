@@ -3,8 +3,8 @@ import React from 'react';
 
 const MatrixTable = () => {
   const levels = ['L1', 'L2', 'L3', 'L4', 'L5'];
-  // Assuming a consistent ₦500 total matrix payout for the 5 levels
-  const payouts = ['₦120', '₦100', '₦60', '₦100', '₦120']; // Adjusted L5 to ₦50 to total ₦500
+  // Updated matrix bonus amounts: L1=₦100, L2=₦70, L3=₦60, L4=₦70, L5=₦200
+  const payouts = ['₦100', '₦70', '₦60', '₦70', '₦200']; // Total: ₦500
 
   return (
     <div className="flex-1 min-w-[300px]">
@@ -42,7 +42,7 @@ export default function MatrixEarnings() {
             {/* Direct Referral Bonus */}
             <div className="md:border-r border-gray-200 md:pr-8 pb-4 md:pb-0 flex-1">
               <div className="text-4xl font-extrabold text-[--emerald] leading-snug">
-                ₦1,000 
+                ₦2,500 
                 <span className="text-lg text-gray-500 font-medium ml-2">/ Referral</span>
               </div>
               <h4 className="text-lg font-bold text-[--dark] mt-1 mb-3">Direct Referral Bonus</h4>
