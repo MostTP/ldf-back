@@ -6,12 +6,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL") // Use "file:./dev.db" for local SQLite
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// Enums converted to String for SQLite compatibility
-// In production with PostgreSQL, you can use enums
+// Using PostgreSQL - enums can be used natively
 
 model User {
   id                Int      @id @default(autoincrement())
