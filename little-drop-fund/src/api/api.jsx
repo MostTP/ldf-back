@@ -4,10 +4,10 @@ import axios from 'axios';
 // Create a custom instance of Axios with a base URL
 // Can be overridden with VITE_API_BASE_URL environment variable
 // Ensure base URL always ends with /api/
-let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/';
+let baseURL = import.meta.env.VITE_API_BASE_URL || 'https://ldf-back-1.onrender.com/api/';
 
 // Force HTTP for localhost (prevent HTTPS protocol errors)
-if (baseURL.includes('localhost') && baseURL.startsWith('https://')) {
+if (baseURL && baseURL.includes('localhost') && baseURL.startsWith('https://')) {
   baseURL = baseURL.replace('https://', 'http://');
 }
 
