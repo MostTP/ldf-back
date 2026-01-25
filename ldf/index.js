@@ -36,7 +36,9 @@ const corsOptions = {
     
     // Build allowed origins list
     const allowedOrigins = [
-      process.env.FRONTEND_URL_LIVE, // Production frontend URL
+      process.env.FRONTEND_URL, // Production frontend URL from env
+      'https://ldf-projecct.vercel.app', // Vercel frontend deployment
+      'https://www.ldf-projecct.vercel.app', // Vercel www subdomain
       ...localhostOrigins, // Always allow localhost for testing
     ].filter(Boolean); // Remove undefined values
     
