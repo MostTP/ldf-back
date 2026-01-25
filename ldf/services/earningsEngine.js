@@ -60,17 +60,18 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50)
     }
 
     // 2. Global Pool Allocation: ₦1,000 → pool ledger (system user or special handling)
-    // For now, we'll create a system earning entry
+    // This is tracked for audit purposes but NOT added to user balance (it's pool funding)
     const poolEarning = await tx.earning.create({
       data: {
         userId: newUserId, // Tracked on new user for audit
         amount: 1000,
-        type: 'GLOBAL_POOL_ROI',
-        description: 'Global pool allocation',
+        type: 'GLOBAL_POOL_CONTRIBUTION',
+        description: 'Global pool contribution from activation',
         activationId: newUserId,
       },
     });
     payouts.push(poolEarning);
+    // Note: GLOBAL_POOL_CONTRIBUTION does NOT increment user balance - it's pool funding, not user earnings
 
     // 3. Operations Cost: ₦500 → internal ledger
     const opsEarning = await tx.earning.create({

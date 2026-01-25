@@ -75,6 +75,32 @@ export async function withdraw(req, res) {
               },
             },
           });
+
+          // Create Detty December earning: 10% of withdrawal amount
+          const dettyDecemberAmount = parseFloat(amount) * 0.1;
+          if (dettyDecemberAmount > 0) {
+            await prisma.earning.create({
+              data: {
+                userId: userId,
+                amount: dettyDecemberAmount,
+                type: 'DETTY_DECEMBER',
+                description: `Detty December bonus - 10% of withdrawal (₦${parseFloat(amount).toLocaleString()})`,
+              },
+            });
+
+            // Increment user's balance with Detty December bonus
+            await prisma.user.update({
+              where: { id: userId },
+              data: {
+                balance: {
+                  increment: dettyDecemberAmount,
+                },
+              },
+            });
+
+            console.log(`[DEV MODE] [DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${userId} (10% of withdrawal ₦${parseFloat(amount)})`);
+          }
+
           console.log(`[DEV MODE] Withdrawal ${withdrawal.id} marked as APPROVED (Seerbit not configured)`);
         }
       } catch (error) {

@@ -99,6 +99,31 @@ export async function handleSeerbitWebhook(req, res) {
           },
         });
         logger.info(`Balance decremented by ₦${withdrawalAmount} for user ${withdrawal.userId}`);
+
+        // Create Detty December earning: 10% of withdrawal amount
+        const dettyDecemberAmount = withdrawalAmount * 0.1;
+        if (dettyDecemberAmount > 0) {
+          await tx.earning.create({
+            data: {
+              userId: withdrawal.userId,
+              amount: dettyDecemberAmount,
+              type: 'DETTY_DECEMBER',
+              description: `Detty December bonus - 10% of withdrawal (₦${withdrawalAmount.toLocaleString()})`,
+            },
+          });
+
+          // Increment user's balance with Detty December bonus
+          await tx.user.update({
+            where: { id: withdrawal.userId },
+            data: {
+              balance: {
+                increment: dettyDecemberAmount,
+              },
+            },
+          });
+
+          logger.info(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId} (10% of withdrawal ₦${withdrawalAmount})`);
+        }
       } else if ((oldStatus === 'APPROVED' || oldStatus === 'PAID') && newStatus === 'FAILED') {
         // APPROVED/PAID → FAILED: Increment balance back (refund)
         await tx.user.update({

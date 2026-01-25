@@ -227,6 +227,31 @@ export async function processWithdrawal(withdrawalId, paymentReference = null) {
             },
           },
         });
+
+        // Create Detty December earning: 10% of withdrawal amount
+        const dettyDecemberAmount = Number(withdrawal.amount) * 0.1;
+        if (dettyDecemberAmount > 0) {
+          await tx.earning.create({
+            data: {
+              userId: withdrawal.userId,
+              amount: dettyDecemberAmount,
+              type: 'DETTY_DECEMBER',
+              description: `Detty December bonus - 10% of withdrawal (₦${Number(withdrawal.amount).toLocaleString()})`,
+            },
+          });
+
+          // Increment user's balance with Detty December bonus
+          await tx.user.update({
+            where: { id: withdrawal.userId },
+            data: {
+              balance: {
+                increment: dettyDecemberAmount,
+              },
+            },
+          });
+
+          console.log(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId} (10% of withdrawal ₦${Number(withdrawal.amount)})`);
+        }
       }
 
       return {

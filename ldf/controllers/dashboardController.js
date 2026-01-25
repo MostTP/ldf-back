@@ -175,8 +175,48 @@ export async function getStats(req, res) {
     const spillover = Math.max(0, teamSize - directReferrals);
 
     // Determine global pool status
-    // User is eligible if they have at least 5 direct referrals
-    const globalPoolStatus = directReferrals >= 5 ? 'Eligible' : 'Ineligible';
+    // User is eligible if (AFFILIATE INCOME + GLOBAL_POOL_ROI) < ₦10,000
+    let globalPoolStatus = 'Ineligible';
+    try {
+      // Get user's AFFILIATE INCOME (REFERRAL_BONUS)
+      const affiliateEarnings = await prisma.earning.aggregate({
+        where: {
+          userId,
+          type: 'REFERRAL_BONUS',
+        },
+        _sum: {
+          amount: true,
+        },
+      });
+
+      // Get user's GLOBAL_POOL_ROI earnings
+      const globalPoolEarnings = await prisma.earning.aggregate({
+        where: {
+          userId,
+          type: 'GLOBAL_POOL_ROI',
+        },
+        _sum: {
+          amount: true,
+        },
+      });
+
+      const affiliateTotal = affiliateEarnings._sum.amount 
+        ? parseFloat(affiliateEarnings._sum.amount.toString()) 
+        : 0;
+      const globalPoolTotal = globalPoolEarnings._sum.amount 
+        ? parseFloat(globalPoolEarnings._sum.amount.toString()) 
+        : 0;
+
+      const combinedTotal = affiliateTotal + globalPoolTotal;
+      
+      // Eligible if combined total < ₦10,000
+      if (combinedTotal < 10000) {
+        globalPoolStatus = 'Eligible';
+      }
+    } catch (eligibilityError) {
+      console.error('Error checking global pool eligibility:', eligibilityError);
+      // Default to Ineligible on error
+    }
 
     // Calculate matrix level based on direct referrals
     // Level 1: 0-1 referrals, Level 2: 2-3, Level 3: 4-7, Level 4: 8-15, Level 5: 16+
