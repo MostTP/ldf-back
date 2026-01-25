@@ -88,6 +88,7 @@ export async function getStats(req, res) {
     let totalEarnings = 0;
     let affiliateEarnings = 0;
     let matrixEarnings = 0;
+    let globalPoolEarnings = 0;
     let dettyDecEarnings = 0;
     let totalWithdrawable = 0;
     let allEarnings = [];
@@ -124,6 +125,16 @@ export async function getStats(req, res) {
       // Calculate matrix earnings (MATRIX_LEVEL_*)
       matrixEarnings = allEarnings
         .filter(e => e.type.startsWith('MATRIX_LEVEL_'))
+        .reduce((sum, e) => {
+          const amount = typeof e.amount === 'object' && e.amount !== null 
+            ? parseFloat(e.amount.toString()) 
+            : parseFloat(e.amount) || 0;
+          return sum + amount;
+        }, 0);
+
+      // Calculate Global Pool earnings (GLOBAL_POOL_ROI)
+      globalPoolEarnings = allEarnings
+        .filter(e => e.type === 'GLOBAL_POOL_ROI')
         .reduce((sum, e) => {
           const amount = typeof e.amount === 'object' && e.amount !== null 
             ? parseFloat(e.amount.toString()) 
@@ -251,6 +262,7 @@ export async function getStats(req, res) {
     // Ensure all values are numbers (not Decimal objects)
     const affiliateAvailableNum = Number(affiliateEarnings) || 0;
     const matrixAvailableNum = Number(matrixEarnings) || 0;
+    const globalPoolAvailableNum = Number(globalPoolEarnings) || 0;
     const dettyDecNum = Number(dettyDecEarnings) || 0;
     const totalEarningsNum = Number(totalEarnings) || 0;
 
@@ -258,6 +270,7 @@ export async function getStats(req, res) {
     console.log('Dashboard Stats for user', userId, {
       affiliateAvailableNum,
       matrixAvailableNum,
+      globalPoolAvailableNum,
       dettyDecNum,
       totalEarningsNum,
       totalWithdrawable,
@@ -278,6 +291,8 @@ export async function getStats(req, res) {
       affiliateLifetime: affiliateAvailableNum,
       matrixAvailable: matrixAvailableNum,
       matrixLifetime: matrixAvailableNum,
+      globalPoolAvailable: globalPoolAvailableNum,
+      globalPoolLifetime: globalPoolAvailableNum,
       dettyDec: dettyDecNum,
       // Premium & Matrix
       premiumSlots: Number(premiumSlots) || 0,
