@@ -50,6 +50,7 @@ export async function getProfile(req, res) {
     // Use username as referral code (or you can generate a unique referral code)
     const referralCode = user.username;
 
+    
     res.json({
       success: true,
       username: user.username,
