@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // Use "file:./dev.db" for local SQLite
+}
+
+// Enums converted to String for SQLite compatibility
+// In production with PostgreSQL, you can use enums
+
+model User {
+  id                Int      @id @default(autoincrement())
+  firstName         String
+  lastName          String
+  email             String   @unique
+  phone             String   @unique
+  username          String   @unique
+  bankName          String
+  bankAccount       String
+  sponsorId         Int?
+  sponsor           User?    @relation("UserSponsor", fields: [sponsorId], references: [id])
+  referrals         User[]   @relation("UserSponsor")
+  couponCode        String
+  passwordHash      String
+  termsAccepted     Boolean  @default(false)
+  riskDisclosureAccepted Boolean @default(false)
+  couponAcknowledged Boolean @default(false)
+  emailVerified     Boolean  @default(false)
+  emailVerificationToken String?
+  emailVerificationTokenExpiry DateTime?
+  isAgent           Boolean  @default(false)
+  isPremium         Boolean  @default(false)
+  kycVerified       Boolean  @default(false)
+  agentCouponCredits Int     @default(0)
+  balance           Decimal  @default(0)  // Stored available balance
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  earnings          Earning[]
+  coupons           Coupon[]
+  investments       Investment[]
+  withdrawals       Withdrawal[]
+  usedCoupons       Coupon[]      @relation("CouponUsedBy")
+  referrerEarnings  Earning[]     @relation("EarningReferrer")
+  sponsorEarnings   Earning[]     @relation("EarningSponsor")
+
+  @@index([email])
+  @@index([username])
+  @@index([phone])
+  @@index([sponsorId])
+  @@index([isAgent])
+  @@index([isPremium])
+}
+
+model Coupon {
+  id                Int      @id @default(autoincrement())
+  code              String   @unique
+  agentId           Int
+  agent             User     @relation(fields: [agentId], references: [id])
+  usedBy            Int?
+  usedByUser        User?    @relation("CouponUsedBy", fields: [usedBy], references: [id])
+  isUsed            Boolean  @default(false)
+  usedAt            DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([code])
+  @@index([agentId])
+  @@index([isUsed])
+}
+
+model Earning {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal
+  type              String  // EarningType enum
+  description       String?
+  referrerId        Int?
+  referrer          User?    @relation("EarningReferrer", fields: [referrerId], references: [id])
+  sponsorId         Int?
+  sponsor           User?    @relation("EarningSponsor", fields: [sponsorId], references: [id])
+  activationId      Int?
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([referrerId])
+  @@index([sponsorId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Investment {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal
+  tier              String  // InvestmentTier enum (BASIC, PREMIUM)
+  paymentReference  String?  @unique
+  status            String   @default("pending")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tier])
+  @@index([status])
+}
+
+model Withdrawal {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  amount            Decimal
+  currency          String   @default("NGN")
+  bankName          String
+  bankAccount       String
+  accountName       String?
+  status            String @default("PENDING")  // WithdrawalStatus enum
+  paymentReference  String?
+  rejectionReason   String?
+  processedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
