@@ -28,3 +28,6 @@ Thumbs.db
 *.swo
 *~
 
+
+# Frontend - tracked in separate repo
+little-drop-fund/
