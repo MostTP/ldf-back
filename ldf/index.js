@@ -42,17 +42,39 @@ const corsOptions = {
       ...localhostOrigins, // Always allow localhost for testing
     ].filter(Boolean); // Remove undefined values
     
+    // Normalize origin (remove trailing slash and convert to lowercase for comparison)
+    const normalizeOrigin = (orig) => orig ? orig.replace(/\/$/, '').toLowerCase() : null;
+    const normalizedOrigin = normalizeOrigin(origin);
+    
+    // Log the incoming origin for debugging
+    logger.info(`CORS check - Origin: ${origin}, Normalized: ${normalizedOrigin}`);
+    logger.info(`CORS check - Allowed origins: ${allowedOrigins.join(', ')}`);
+    
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
+    if (!origin || !normalizedOrigin) {
+      logger.info('CORS: Allowing request with no origin');
       return callback(null, true);
     }
     
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
+    // Check if origin matches any allowed origin (exact or normalized, case-insensitive)
+    const isAllowed = allowedOrigins.some(allowed => {
+      const normalizedAllowed = normalizeOrigin(allowed);
+      return normalizedOrigin === normalizedAllowed || 
+             normalizedOrigin === allowed.toLowerCase() ||
+             normalizedOrigin.includes('ldf-projecct.vercel.app');
+    });
+    
+    // Also check if it's a Vercel domain (more permissive for Vercel)
+    const isVercelDomain = normalizedOrigin.includes('.vercel.app') || 
+                          normalizedOrigin.includes('vercel.app');
+    
+    if (isAllowed || isVercelDomain) {
+      logger.info(`CORS: Allowing origin: ${normalizedOrigin}`);
       callback(null, true);
     } else {
       // Log the blocked origin for debugging
-      logger.warn(`CORS blocked origin: ${origin}`);
+      logger.warn(`CORS blocked origin: ${normalizedOrigin}`);
+      logger.warn(`Allowed origins: ${allowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
