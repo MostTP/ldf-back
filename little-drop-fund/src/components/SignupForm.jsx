@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Lock, Mail, User, Phone, Code, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { authService } from "../api/services"; 
 import { useNavigate, Link, useSearchParams } from "react-router-dom"; 
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 // =========================================================================
 // 1. HELPER COMPONENTS
@@ -63,6 +66,7 @@ export default function SignupForm() {
   const [errors, setErrors] = useState({}); 
   const [error, setError] = useState(null); 
   const [success, setSuccess] = useState(false);
+  const [phone, setPhone] = useState("");
 
   // Regex Definitions
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -116,10 +120,13 @@ export default function SignupForm() {
     }
     
     // Final Phone Check
-    if (!formData.phone) {
+    if (!formData.phone || !phone) {
         newErrors.phone = "Phone number is required";
-    } else if (!phoneRegex.test(formData.phone)) {
-        newErrors.phone = "Invalid phone format";
+    } else {
+      const phoneWithPlus = phone.startsWith('+') ? phone : '+' + phone;
+      if (!isValidPhoneNumber(phoneWithPlus)) {
+        newErrors.phone = "Invalid phone number format";
+      }
     }
 
     if (!formData.username || formData.username.length < 6) newErrors.username = "Username must be 6-15 characters";
@@ -211,17 +218,38 @@ export default function SignupForm() {
           <InputField icon={<User size={18} />} placeholder="First Name *" name="firstName" onChange={handleInputChange} value={formData.firstName || ''} error={errors.firstName} />
           <InputField icon={<User size={18} />} placeholder="Last Name *" name="lastName" onChange={handleInputChange} value={formData.lastName || ''} error={errors.lastName} />
           <InputField icon={<Mail size={18} />} placeholder="Email Address *" name="email" type="email" onChange={handleInputChange} value={formData.email || ''} error={errors.email} />
-          
-          <InputField 
-            icon={<Phone size={18} />} 
-            placeholder="Phone Number (WhatsApp) *" 
-            name="phone" 
-            type="tel" 
-            onChange={handleInputChange} 
-            value={formData.phone || ''} 
-            error={errors.phone} 
-            hint="Format: Country code +XXX or local format (e.g., +234, +233, +254)"
-          />
+         <div className="space-y-1">
+  <label className="text-xs font-bold text-gray-600 uppercase">
+    Phone Number
+  </label>
+
+  <PhoneInput
+    country={"ng"}
+    enableSearch={true}
+    onlyCountries={[
+      "ng", "gh", "ke", "za", "eg", "tz", "ug", "rw", "cm", "sn",
+      "dz", "ma", "ci", "et", "zm", "zw", "bw", "na", "mw", "sl"
+    ]}
+    value={phone}
+    onChange={(value) => {
+      setPhone(value);
+      setFormData(prev => ({ ...prev, phone: "+" + value }));
+    }}
+    inputClass="!w-full !h-12 !pl-14 !text-sm !border !border-gray-300 !rounded-xl focus:!border-emerald-500 focus:!ring-emerald-500"
+    buttonClass="!border-gray-300 !rounded-l-xl"
+    dropdownClass="!z-[9999]"
+    containerClass="!w-full"
+  />
+
+  <p className="text-[10px] text-gray-500">
+    Select your country code before entering your number
+  </p>
+  {errors.phone && (
+    <p className="text-red-500 text-xs mt-1 ml-1 flex items-center">
+      <AlertCircle size={12} className="mr-1" /> {errors.phone}
+    </p>
+  )}
+</div>
 
           <InputField icon={<User size={18} />} placeholder="Desired Username *" name="username" onChange={handleInputChange} hint="Must be unique, 6-15 characters." value={formData.username || ''} error={errors.username} />
           <InputField icon={<Code size={18} />} placeholder="LDF-Starter" name="ldfStarterCode" onChange={handleInputChange} hint="Auto-filled from an affiliate link." value={formData.ldfStarterCode || ''} />

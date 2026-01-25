@@ -35,7 +35,7 @@ export default function MatrixEarnings() {
         
         <div className="bg-white rounded-xl border-l-4 border-l-[var(--emerald)] shadow-soft p-8">
           <h3 className="text-center text-xl font-bold p-3 mb-6 bg-[var(--emerald)] text-white rounded-md shadow-md">
-            A. Active Income (Affiliate & Team Growth)
+            A. Active Income (Affiliate & Community Growth)
           </h3>
           
           <div className="flex flex-col md:flex-row gap-8">
@@ -43,11 +43,11 @@ export default function MatrixEarnings() {
             <div className="md:border-r border-gray-200 md:pr-8 pb-4 md:pb-0 flex-1">
               <div className="text-4xl font-extrabold text-[--emerald] leading-snug">
                 ₦2,500 
-                <span className="text-lg text-gray-500 font-medium ml-2">/ Referral</span>
+                <span className="text-lg text-gray-500 font-medium ml-2">/ Sales</span>
               </div>
-              <h4 className="text-lg font-bold text-[--dark] mt-1 mb-3">Direct Referral Bonus</h4>
+              <h4 className="text-lg font-bold text-[--dark] mt-1 mb-3">AFFILIATE COMMISSION</h4>
               <p className="text-gray-600 text-sm">
-                Paid instantly for every person who purchases the LDF Starter Kit through your unique link.
+                Paid instantly for every person who purchases the LDF PREMIUM COURSE through your unique link.
               </p>
             </div>
             

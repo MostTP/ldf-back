@@ -6,26 +6,21 @@ import { CheckCircle } from 'lucide-react';
 const CORE_FEATURES = [
  { 
  title: "Real Product Value", 
- description: "Low ₦3,000 entry cost includes high-value, actionable Stock Market Investing Masterclass content.", 
+ description: "Low ₦5,000 entry cost includes high-value, actionable Masterclass content.", 
  },
  { 
  title: "Sustainable Earnings", 
- description: "Income is supported by affiliate sales and ROI from community-managed ventures, not just recruitment fees.",
+ description: "Income is supported by affiliate sales and monthly subscription not just recruitment fees",
  },
  { 
  title: "Safety Net Payout", 
- description: "Provides a variable monthly dividend (₦1,250 – ₦3,500) for members who have not yet earned actively.", 
+ description: "Provides a variable monthly dividend (₦3,000 – ₦10,000) for members who have not emjoyed the benefits of partnership.", 
  },
  { 
- title: "Automated Matrix", 
- description: "Earn up to 5 levels deep from team growth with an overflow (spillover) system to benefit passive learners.",
+ 
+ description: "... and many more to unveil",
  },
 ];
-
-const PREMIUM_ROI_FEATURE = {
-    title: "Optional Premium ROI",
-    description: "Opportunity for members to invest separately (min. ₦10,000) for high-yield, proportional returns from LDF Capital Pool.", 
-};
 
 
 // Updated FeatureCard remains the same
@@ -45,7 +40,7 @@ export default function Features() {
  <section id="features" ref={ref} className="animate-section py-20 px-6 bg-white">
  <div className="max-w-7xl mx-auto text-center">
  <h2 className="text-3xl md:text-4xl font-extrabold text-[--dark] mb-12">
- Key Features & Value Proposition
+ These are the features below but not limited to
  </h2>
  
  {/* Main Grid Container */}
@@ -58,7 +53,6 @@ export default function Features() {
 
  {/* 2. RENDER PREMIUM ROI (Spans both columns) */}
  <div className="md:col-span-2"> 
- <FeatureCard {...PREMIUM_ROI_FEATURE} />
  </div>
  </div>
  </div>

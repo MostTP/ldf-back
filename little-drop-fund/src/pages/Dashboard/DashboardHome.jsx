@@ -299,7 +299,6 @@ export default function DashboardHome() {
                 <h3 className="text-lg font-bold text-gray-800 mb-4 uppercase">Quick Resources</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <FooterTile icon={<MessageCircle size={22}/>} title="Support" desc="FAQ & Chat" color="bg-blue-50 text-blue-600" onClick={() => navigate('/app/support')} />
-                    <FooterTile icon={<ShoppingCart size={22}/>} title="Agent" desc="Buy Coupons" color="bg-purple-50 text-purple-600" link="https://wa.me/YOUR_PHONE_NUMBER" />
                     <FooterTile icon={<Send size={22}/>} title="Telegram" desc="Community" color="bg-sky-50 text-sky-600" link="https://t.me/YOUR_CHANNEL" />
                     <FooterTile icon={<ImageIcon size={22}/>} title="Marketing" desc="Banners" color="bg-orange-50 text-orange-600" onClick={() => navigate('/app/marketing')} />
                 </div>

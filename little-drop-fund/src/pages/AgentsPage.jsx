@@ -79,7 +79,7 @@ export default function AgentsPage() {
  Official Coupon Code Agents List
  </h1>
  <p className="text-lg text-gray-600 max-w-2xl mx-auto">
- Connect with one of our trusted agents below to securely purchase your LDF Activation Coupon Code (₦3,000). Agents are sorted by stock level.
+ Connect with one of our trusted agents below to securely purchase your LDF Activation Coupon Code (₦5,000). Agents are sorted by stock level.
  </p>
                     <p className="mt-2 text-sm text-red-500 font-medium">
                         **Important:** Agents showing "Out of Stock" cannot provide codes. Please contact an available agent.

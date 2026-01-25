@@ -26,7 +26,7 @@ export default function Hero(){
  Turning Little Drops into <span style={{background:'linear-gradient(90deg,#FACC15,#A3E635)', WebkitBackgroundClip:'text', color:'transparent'}}>Streams of Wealth</span>
  </h1>
  <p className="mt-4 text-gray-300 text-lg max-w-xl">
- Join a community-first platform that converts small efforts into sustainable income — referral bonuses, matrix earnings, and community profit sharing.
+ Join a community-first platform that converts small efforts into sustainable income — with our "MASTERCLASS COURSES" you will know HOW
  </p>
 
  <div className="mt-6 flex gap-4 flex-wrap">
@@ -40,7 +40,7 @@ export default function Hero(){
  <div className="bg-white/5 rounded-3xl p-6 w-full max-w-xs sm:max-w-sm lg:max-w-md transform transition-all shadow-xl"> 
  <div className="w-full h-56 bg-gradient-to-br from-emerald-500 to-yellow-400 rounded-lg mb-4" />
  <h4 className="font-bold text-lg text-white">Start with ₦5,000</h4>
- <p className="text-gray-300 mt-2">Activate your account and get a coupon to join the community. Invite friends and start earning.</p>
+ <p className="text-gray-300 mt-2">Activate your account and get a coupon to join the community. Invite friends and start earning "AFFILIATE INCOME".</p>
  </div>
  </div>
  </div>

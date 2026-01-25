@@ -11,17 +11,17 @@ export default function FAQ() {
     {
       question: "What is Little Drop Fund?",
       answer:
-        "Little Drop Fund is a community-driven earning platform where members earn through referrals, matrix bonuses, and community profit sharing, backed by a high-value Stock Market Masterclass."
+        "Little Drop Fund(LDF) is an EdTech platform designed to address the dual challenge of low financial literacy and limited access to capital growth opportunities in africa. LDF utilizes a sustainable, affiliate-based model to distribute high-value educational content while pooling segregated funds into carefully managed investment vehicles."
     },
     {
       question: "How much is activation?",
       answer:
-        "You activate your account with a one-time ₦5,000 coupon. This is the only cost, and it grants you lifetime access to the product and earning system."
+        "You activate your account with a one-time ₦5,000 coupon (plus coupon agent fee between ₦200 to ₦500 may be charged). This is the only cost, and monthly subscription of ₦2,000 which grants you access to the product and earning system."
     },
     {
       question: "How do I earn?",
       answer:
-        "You earn through three main streams: 1) Direct Referrals (₦2,500 instant bonus), 2) Matrix Bonuses (up to 5 levels deep), and 3) Global Pool Payouts (monthly dividends for all active members)."
+        "You earn through three main streams: 1) Direct sales (₦2,500 AFFILIATE bonus), 2) Community Network Bonuses (up to 5 levels deep), and 3) Global Pool Payouts (monthly dividends for all active members)."
     },
     {
       question: "Is this a loan or investment company?",
@@ -31,7 +31,7 @@ export default function FAQ() {
     {
       question: "Can I join without referring?",
       answer:
-      "Yes. While referrals unlock the fastest income stream, members who do not refer can still earn matrix spillover and monthly dividends from the community business pool."
+      "Yes. While referrals unlock the fastest income stream, members who do not refer can still earn through our community network bonus amd monthly dividends from community business pool"
     },
     {
       question: "How do I withdraw?",
