@@ -36,7 +36,7 @@ const corsOptions = {
     
     // Build allowed origins list
     const allowedOrigins = [
-      process.env.FRONTEND_URL, // Production frontend URL
+      process.env.FRONTEND_URL_LIVE, // Production frontend URL
       ...localhostOrigins, // Always allow localhost for testing
     ].filter(Boolean); // Remove undefined values
     
