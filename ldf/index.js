@@ -34,6 +34,7 @@ const corsOptions = {
       'http://127.0.0.1:3000',
     ];
     
+    
     // Build allowed origins list
     const allowedOrigins = [
       process.env.FRONTEND_URL, // Production frontend URL from env
