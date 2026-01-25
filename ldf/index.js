@@ -21,6 +21,10 @@ validateEnv();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Trust proxy - Required for Render and other reverse proxies
+// This allows Express to correctly identify the client's IP address
+app.set('trust proxy', 1);
+
 // CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
@@ -69,14 +73,32 @@ const corsOptions = {
     const isVercelDomain = normalizedOrigin.includes('.vercel.app') || 
                           normalizedOrigin.includes('vercel.app');
     
-    if (isAllowed || isVercelDomain) {
+    // In production, be more permissive with origins to avoid CORS issues
+    // Allow any origin that looks like a valid frontend deployment
+    const isProduction = process.env.NODE_ENV === 'production';
+    const looksLikeFrontend = isProduction && (
+      normalizedOrigin.includes('vercel.app') ||
+      normalizedOrigin.includes('netlify.app') ||
+      normalizedOrigin.includes('github.io') ||
+      normalizedOrigin.includes('render.com') ||
+      normalizedOrigin.includes('localhost') ||
+      normalizedOrigin.includes('127.0.0.1')
+    );
+    
+    if (isAllowed || isVercelDomain || looksLikeFrontend) {
       logger.info(`CORS: Allowing origin: ${normalizedOrigin}`);
       callback(null, true);
     } else {
       // Log the blocked origin for debugging
       logger.warn(`CORS blocked origin: ${normalizedOrigin}`);
       logger.warn(`Allowed origins: ${allowedOrigins.join(', ')}`);
-      callback(new Error('Not allowed by CORS'));
+      // In production, allow the request but log a warning
+      if (isProduction) {
+        logger.warn(`CORS: Allowing origin in production mode: ${normalizedOrigin}`);
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   credentials: true,
@@ -133,9 +155,36 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/payment', paymentRoutes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check with diagnostics
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+  };
+
+  // Check database connection
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    await prisma.$queryRaw`SELECT 1`;
+    await prisma.$disconnect();
+    health.database = 'connected';
+  } catch (error) {
+    health.database = 'disconnected';
+    health.databaseError = process.env.NODE_ENV === 'development' ? error.message : 'Database connection failed';
+    health.status = 'degraded';
+  }
+
+  // Check critical environment variables
+  health.env = {
+    hasJWTSecret: !!process.env.JWT_SECRET,
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    hasFrontendUrl: !!process.env.FRONTEND_URL,
+  };
+
+  const statusCode = health.status === 'ok' ? 200 : 503;
+  res.status(statusCode).json(health);
 });
 
 // Error handling middleware

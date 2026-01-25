@@ -161,6 +161,17 @@ router.post('/login', loginValidation, async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
+    logger.error('Login error stack:', error.stack);
+    
+    // Check for specific error types
+    if (error.code === 'P1001' || error.message?.includes('Can\'t reach database')) {
+      logger.error('Database connection error');
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection error. Please try again later.',
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',
