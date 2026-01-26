@@ -47,7 +47,7 @@ async function getAccessToken() {
 
     return response.data.data.token;
   } catch (error) {
-    logger.error('Seerbit token error:', error.response?.data || error.message);
+    logger.error('Seerbit token error');
     throw new Error('Failed to authenticate with Seerbit');
   }
 }
@@ -86,11 +86,7 @@ export async function initiateBankTransfer(transferData) {
 
     const url = `${BASE_URL}/api/v2/transfers/bank`;
     
-    logger.info('Initiating Seerbit bank transfer:', {
-      reference: transferData.reference,
-      amount: transferData.amount,
-      accountNumber: transferData.accountNumber.substring(0, 4) + '****', // Mask account number in logs
-    });
+    logger.info('Initiating Seerbit bank transfer');
 
     // Make API request
     const response = await axios.post(url, payload, {
@@ -103,7 +99,7 @@ export async function initiateBankTransfer(transferData) {
     const responseData = response.data;
 
     if (!responseData || response.status !== 200) {
-      logger.error('Seerbit transfer error:', responseData);
+      logger.error('Seerbit transfer error');
       throw new Error(responseData.message || `Transfer failed: ${response.statusText}`);
     }
 
@@ -111,12 +107,7 @@ export async function initiateBankTransfer(transferData) {
     const status = responseData.status || responseData.data?.status || 'PENDING';
     const isSuccess = status === 'SUCCESS' || status === 'SUCCESSFUL' || status === 'COMPLETED';
 
-    logger.info('Seerbit transfer initiated:', {
-      reference: transferData.reference,
-      amount: transferData.amount,
-      status: status,
-      transactionReference: responseData.data?.transactionReference || responseData.reference,
-    });
+    logger.info('Seerbit transfer initiated');
 
     return {
       success: true,
@@ -126,7 +117,7 @@ export async function initiateBankTransfer(transferData) {
       data: responseData,
     };
   } catch (error) {
-    logger.error('Seerbit bank transfer error:', error.response?.data || error.message);
+    logger.error('Seerbit bank transfer error');
     throw new Error(error.response?.data?.message || error.message || 'Failed to initiate bank transfer');
   }
 }
@@ -166,7 +157,7 @@ export async function verifyTransaction(transactionReference) {
       data,
     };
   } catch (error) {
-    logger.error('Seerbit verification error:', error.response?.data || error.message);
+    logger.error('Seerbit verification error');
     throw new Error(error.response?.data?.message || error.message || 'Failed to verify transaction');
   }
 }
@@ -202,7 +193,7 @@ export async function getBanks() {
       banks: data.data || data.banks || data,
     };
   } catch (error) {
-    logger.error('Seerbit get banks error:', error.response?.data || error.message);
+    logger.error('Seerbit get banks error');
     throw new Error(error.response?.data?.message || error.message || 'Failed to get banks');
   }
 }
@@ -228,7 +219,7 @@ export function verifyWebhookSignature(payload, signature) {
     
     return expectedSignature === signature;
   } catch (error) {
-    logger.error('Webhook signature verification error:', error);
+    logger.error('Webhook signature verification error');
     return false;
   }
 }

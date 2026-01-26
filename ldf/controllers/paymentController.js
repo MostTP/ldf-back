@@ -77,11 +77,11 @@ export async function initializePayment(req, res) {
         },
       },
     });
-  } catch (error) {
-    console.error('Payment initialization error:', error);
+    } catch (error) {
+    logger.error('Payment initialization error');
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to initialize payment',
+      message: 'Failed to initialize payment',
     });
   }
 }
@@ -157,10 +157,10 @@ export async function initializeAgentCouponPayment(req, res) {
       },
     });
   } catch (error) {
-    console.error('Agent coupon payment initialization error:', error);
+    logger.error('Agent coupon payment initialization error');
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to initialize agent coupon payment',
+      message: 'Failed to initialize agent coupon payment',
     });
   }
 }
@@ -268,14 +268,14 @@ export async function redirectAgentCouponPayment(req, res) {
         },
       });
     } catch (flutterwaveError) {
-      console.error('Flutterwave API error:', flutterwaveError);
-      throw new Error(`Flutterwave error: ${flutterwaveError.message || 'Failed to create payment link'}`);
+      logger.error('Flutterwave API error');
+      throw new Error('Failed to create payment link');
     }
   } catch (error) {
-    console.error('Agent coupon payment URL generation error:', error);
+    logger.error('Agent coupon payment URL generation error');
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to generate payment URL',
+      message: 'Failed to generate payment URL',
     });
   }
 }
@@ -313,9 +313,9 @@ export async function agentCouponPaymentCallback(req, res) {
       res.redirect(`${frontendUrl}/dashboard/agent?payment=failed&tx_ref=${tx_ref}`);
     }
   } catch (error) {
-    console.error('Payment callback error:', error);
+    logger.error('Payment callback error');
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/dashboard/agent?payment=error&message=${encodeURIComponent(error.message)}`);
+    res.redirect(`${frontendUrl}/dashboard/agent?payment=error`);
   }
 }
 
@@ -430,7 +430,7 @@ export async function verifyAgentCouponPayment(req, res) {
           await session.commitTransaction();
           session.endSession();
 
-          logger.info(`Manually verified and credited ${creditsToAdd} coupon credits to user ${userId}. New balance: ${updatedUser.agentCouponCredits}`);
+          logger.info('Payment verified and credits added');
 
           return res.json({
             success: true,
@@ -452,17 +452,17 @@ export async function verifyAgentCouponPayment(req, res) {
         });
       }
     } catch (flutterwaveError) {
-      logger.error('Flutterwave verification error:', flutterwaveError);
+      logger.error('Flutterwave verification error');
       return res.status(500).json({
         success: false,
-        message: `Failed to verify payment with Flutterwave: ${flutterwaveError.message}`,
+        message: 'Failed to verify payment',
       });
     }
   } catch (error) {
-    logger.error('Payment verification error:', error);
+    logger.error('Payment verification error');
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to verify payment',
+      message: 'Failed to verify payment',
     });
   }
 }

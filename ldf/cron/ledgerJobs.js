@@ -1,5 +1,6 @@
 import { User, Investment, Earning } from '../models/index.js';
 import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
 
 /**
  * Monthly Global Pool ROI distribution
@@ -9,7 +10,7 @@ import mongoose from 'mongoose';
  */
 export async function distributeGlobalPoolROI() {
   try {
-    console.log('[GLOBAL_POOL] Starting monthly distribution...');
+    // Starting monthly distribution
 
     // Calculate available pool: Total Contributions - Total Distributions
     const totalContributionsResult = await Earning.aggregate([
@@ -41,14 +42,7 @@ export async function distributeGlobalPoolROI() {
     
     const availablePool = contributionsAmount - distributedAmount;
 
-    console.log(`[GLOBAL_POOL] Pool calculation:`, {
-      totalContributions: contributionsAmount,
-      totalDistributed: distributedAmount,
-      availablePool: availablePool,
-    });
-
     if (availablePool <= 0) {
-      console.log('[GLOBAL_POOL] No available pool to distribute');
       return {
         success: true,
         message: 'No available pool to distribute',
@@ -119,11 +113,7 @@ export async function distributeGlobalPoolROI() {
       }
     }
 
-    console.log(`[GLOBAL_POOL] Found ${eligibleUsers.length} eligible users (out of ${allUsers.length} email-verified users)`);
-    console.log(`[GLOBAL_POOL] Total amount needed: ₦${totalNeeded}, Available pool: ₦${availablePool}`);
-
     if (eligibleUsers.length === 0) {
-      console.log('[GLOBAL_POOL] No eligible users found (all users have AFFILIATE + GLOBAL_POOL >= ₦10,000)');
       return {
         success: true,
         message: 'No eligible users found',
@@ -143,7 +133,6 @@ export async function distributeGlobalPoolROI() {
       for (const user of eligibleUsers) {
         // Only distribute if pool has funds available
         if (availablePool - totalDistributedThisRound <= 0) {
-          console.log(`[GLOBAL_POOL] Pool exhausted. Stopping distribution.`);
           break;
         }
 
@@ -192,7 +181,7 @@ export async function distributeGlobalPoolROI() {
       totalNeeded: totalNeeded,
     };
   } catch (error) {
-    console.error('[GLOBAL_POOL] Distribution error:', error);
+    logger.error('Global pool distribution error');
     throw error;
   }
 }
@@ -252,9 +241,9 @@ export async function distributePremiumROI() {
       throw error;
     }
 
-    console.log(`Distributed premium ROI to ${premiumUsers.length} users`);
+    logger.info('Premium ROI distribution completed');
   } catch (error) {
-    console.error('Premium ROI distribution error:', error);
+    logger.error('Premium ROI distribution error');
     throw error;
   }
 }

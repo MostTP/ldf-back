@@ -11,7 +11,7 @@ export async function testConnection() {
     }
     return { connected: false, error: 'Not connected to database' };
   } catch (error) {
-    logger.error('Database connection failed:', error.message);
+    logger.error('Database connection failed');
     return { connected: false, error: error.message };
   }
 }
@@ -37,7 +37,7 @@ export async function connect() {
     logger.info('MongoDB connected');
   } catch (error) {
     isConnected = false;
-    logger.error('MongoDB connection error:', error.message);
+    logger.error('MongoDB connection error');
     throw error;
   }
 }

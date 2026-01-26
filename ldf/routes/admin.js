@@ -7,6 +7,7 @@ import {
   creditAgentCouponsValidation,
   processWithdrawalRequest,
   processWithdrawalValidation,
+  getEarningsFlow,
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.use(requireAdmin);
 router.post('/upgrade-agent', upgradeToAgentValidation, upgradeToAgent);
 router.post('/agent/credit-coupons', creditAgentCouponsValidation, creditAgentCoupons);
 router.post('/withdrawals/process', processWithdrawalValidation, processWithdrawalRequest);
+router.get('/earnings/flow', getEarningsFlow);
 
 export default router;
 

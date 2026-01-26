@@ -49,11 +49,7 @@ function verifyFlutterwaveSignature(req) {
   const isValid = hash === signature;
   
   if (!isValid) {
-    logger.warn('Webhook signature verification failed', {
-      expected: hash,
-      received: signature,
-      hasSecretHash: !!secretHash
-    });
+    logger.warn('Webhook signature verification failed');
   }
   
   return isValid;
@@ -71,18 +67,13 @@ export async function handlePaymentWebhook(req, res) {
       body = JSON.parse(req.body.toString('utf8'));
     }
 
-    // Log webhook received for debugging
+    // Log webhook received (sanitized)
     logger.info('Webhook received:', {
       event: body.event,
-      tx_ref: body.data?.tx_ref,
       status: body.data?.status,
-      amount: body.data?.amount,
       hasMetaData: !!body.meta_data,
       hasMeta: !!body.meta,
-      headers: {
-        'verif-hash': req.headers['verif-hash'] ? 'present' : 'missing',
-        'x-flutterwave-signature': req.headers['x-flutterwave-signature'] ? 'present' : 'missing'
-      }
+      hasSignature: !!(req.headers['verif-hash'] || req.headers['x-flutterwave-signature'])
     });
 
     // Verify webhook signature (uses original req.body which may be Buffer)
@@ -119,12 +110,8 @@ export async function handlePaymentWebhook(req, res) {
     const userId = meta.userId || body.meta_data?.userId || body.data?.meta?.userId || body.meta?.userId || body.data?.customer?.meta?.userId;
     
     logger.info('Webhook processing:', {
-      paymentReference,
       purpose,
-      credits,
-      userId,
-      status,
-      meta: JSON.stringify(meta)
+      status
     });
 
     if (!paymentReference) {
@@ -149,7 +136,7 @@ export async function handlePaymentWebhook(req, res) {
     if (existingInvestment && existingInvestment.status === 'completed') {
       const user = existingInvestment.userId;
       const credits = user?.agentCouponCredits || 0;
-      logger.info(`Payment ${paymentReference} already processed. Current user balance: ${credits}`);
+      logger.info('Payment already processed');
       return res.json({
         success: true,
         message: 'Payment already processed',
@@ -180,20 +167,20 @@ export async function handlePaymentWebhook(req, res) {
           .select('agentCouponCredits isAgent');
 
         if (!userExists) {
-          logger.error(`User ${finalUserId} not found for payment ${paymentReference}`);
+          logger.error('User not found for payment');
           return res.status(404).json({
             success: false,
             message: `User ${finalUserId} not found`,
           });
         }
 
-        logger.info(`Processing AGENT_COUPON payment for user ${finalUserId}. Current balance: ${userExists.agentCouponCredits}, Credits to add: ${credits}`);
+        logger.info('Processing AGENT_COUPON payment');
 
         // Calculate credits to add
         const creditsToAdd = credits > 0 ? credits : Math.floor(parseFloat(amount) / 100);
         
         if (creditsToAdd <= 0) {
-          logger.warn(`No credits to add for payment ${paymentReference}. Credits: ${credits}, Amount: ${amount}`);
+          logger.warn('No credits to add for payment');
           return res.status(400).json({
             success: false,
             message: `Invalid credits: ${credits}, amount: ${amount}`,
@@ -233,7 +220,7 @@ export async function handlePaymentWebhook(req, res) {
           await session.commitTransaction();
           session.endSession();
 
-          logger.info(`Successfully credited ${creditsToAdd} coupon credits to user ${finalUserId} (${updatedUser.firstName} ${updatedUser.lastName}). New balance: ${updatedUser.agentCouponCredits}`);
+          logger.info('Successfully credited coupon credits');
 
           const result = updatedUser;
 
@@ -253,7 +240,7 @@ export async function handlePaymentWebhook(req, res) {
           throw transactionError;
         }
       } catch (error) {
-        logger.error('Error processing AGENT_COUPON payment:', error);
+        logger.error('Error processing AGENT_COUPON payment');
         return res.status(500).json({
           success: false,
           message: 'Failed to process agent coupon payment',
@@ -328,7 +315,7 @@ export async function handlePaymentWebhook(req, res) {
           message: 'Payment processed successfully',
         });
       } catch (error) {
-        logger.error('Error processing premium payment:', error);
+        logger.error('Error processing premium payment');
         return res.status(500).json({
           success: false,
           message: 'Failed to process premium payment',
@@ -336,7 +323,7 @@ export async function handlePaymentWebhook(req, res) {
       }
     }
   } catch (error) {
-    logger.error('Webhook error:', error);
+    logger.error('Webhook error');
     res.status(500).json({
       success: false,
       message: 'Webhook processing failed',

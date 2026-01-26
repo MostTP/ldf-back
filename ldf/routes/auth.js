@@ -2,7 +2,7 @@ import express from 'express'; import { body, validationResult } from 'express-v
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { User } from '../models/index.js';
+import { User, Coupon } from '../models/index.js';
 import { logger } from '../utils/logger.js';
 import { activateUser } from '../services/activationService.js';
 
@@ -154,8 +154,7 @@ router.post('/login', loginValidation, async (req, res) => {
       user: userData,
     });
   } catch (error) {
-    logger.error('Login error:', error);
-    logger.error('Login error stack:', error.stack);
+    logger.error('Login error');
     
     if (error.message?.includes('connection')) {
       logger.error('Database connection error');
@@ -229,7 +228,24 @@ router.post('/register', registerValidation, async (req, res) => {
       if (sponsorUser) {
         resolvedSponsorId = sponsorUser._id;
       } else {
-        logger.warn(`Sponsor not found: ${sponsor}. User will be registered without sponsor.`);
+        logger.warn('Sponsor not found. User will be registered without sponsor.');
+      }
+    }
+
+    // Validate coupon code if provided
+    if (couponCode && couponCode.trim()) {
+      const coupon = await Coupon.findOne({ code: couponCode.trim().toUpperCase() });
+      if (!coupon) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid coupon code',
+        });
+      }
+      if (coupon.isUsed) {
+        return res.status(400).json({
+          success: false,
+          message: 'This coupon has already been used',
+        });
       }
     }
 
@@ -265,13 +281,13 @@ router.post('/register', registerValidation, async (req, res) => {
 
     if (couponCode && couponCode.trim()) {
       try {
-        logger.info(`[REGISTRATION] Auto-activating user ${user._id} with coupon ${couponCode}`);
+        logger.info('Auto-activating user with coupon');
         activationResult = await activateUser(user._id.toString(), couponCode.trim());
-        logger.info(`[REGISTRATION] Auto-activation successful for user ${user._id}`);
+        logger.info('Auto-activation successful');
       } catch (error) {
         // Log error but don't fail registration - user can activate manually later
         activationError = error.message;
-        logger.error(`[REGISTRATION] Auto-activation failed for user ${user.id}:`, error);
+        logger.error('Auto-activation failed');
       }
     }
 
@@ -298,7 +314,7 @@ router.post('/register', registerValidation, async (req, res) => {
       verificationToken: process.env.NODE_ENV === 'development' ? emailVerificationToken : undefined,
     });
   } catch (error) {
-    logger.error('Registration error:', error);
+    logger.error('Registration error');
     
     if (error.code === 11000 || error.message?.includes('duplicate key')) {
       const field = Object.keys(error.keyPattern || {})[0] || 'field';
@@ -368,7 +384,7 @@ router.post('/verify-email', verifyEmailValidation, async (req, res) => {
       message: 'Email verified successfully',
     });
   } catch (error) {
-    logger.error('Email verification error:', error);
+    logger.error('Email verification error');
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',
@@ -434,7 +450,7 @@ router.post('/resend-verification', resendVerificationValidation, async (req, re
       verificationToken: process.env.NODE_ENV === 'development' ? emailVerificationToken : undefined,
     });
   } catch (error) {
-    logger.error('Resend verification error:', error);
+    logger.error('Resend verification error');
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.',

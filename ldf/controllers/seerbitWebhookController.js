@@ -25,11 +25,7 @@ export async function handleSeerbitWebhook(req, res) {
     }
 
     // Log webhook received
-    logger.info('Seerbit webhook received:', {
-      transactionReference: body.transactionReference || body.reference || body.data?.reference,
-      status: body.status || body.data?.status,
-      event: body.event || body.type,
-    });
+    logger.info('Seerbit webhook received');
 
     const transactionReference = body.transactionReference || body.reference || body.data?.reference;
     const status = body.status || body.data?.status || body.transactionStatus;
@@ -90,7 +86,7 @@ export async function handleSeerbitWebhook(req, res) {
           { $inc: { balance: -withdrawalAmount } },
           { session }
         );
-        logger.info(`Balance decremented by ₦${withdrawalAmount} for user ${withdrawal.userId}`);
+        logger.info('Balance decremented for withdrawal');
 
         // Create Detty December earning: 10% of withdrawal amount
         const dettyDecemberAmount = withdrawalAmount * 0.1;
@@ -114,7 +110,7 @@ export async function handleSeerbitWebhook(req, res) {
             },
           });
 
-          logger.info(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId} (10% of withdrawal ₦${withdrawalAmount})`);
+          logger.info('Detty December bonus created');
         }
       } else if ((oldStatus === 'APPROVED' || oldStatus === 'PAID') && newStatus === 'FAILED') {
         await User.findByIdAndUpdate(
@@ -122,7 +118,7 @@ export async function handleSeerbitWebhook(req, res) {
           { $inc: { balance: withdrawalAmount } },
           { session }
         );
-        logger.info(`Balance incremented back by ₦${withdrawalAmount} for user ${withdrawal.userId} (withdrawal failed)`);
+        logger.info('Balance incremented back (withdrawal failed)');
       }
 
       const dettyDecemberAmount = withdrawalAmount * 0.1;
@@ -140,7 +136,7 @@ export async function handleSeerbitWebhook(req, res) {
           { $inc: { balance: dettyDecemberAmount } },
           { session }
         );
-        logger.info(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId}`);
+        logger.info('Detty December bonus created');
       }
 
       await session.commitTransaction();
@@ -151,7 +147,7 @@ export async function handleSeerbitWebhook(req, res) {
       session.endSession();
     }
 
-    logger.info(`Withdrawal ${withdrawal._id} updated to ${newStatus} via Seerbit webhook`);
+    logger.info('Withdrawal updated via Seerbit webhook');
 
     return res.json({
       success: true,
@@ -160,7 +156,7 @@ export async function handleSeerbitWebhook(req, res) {
       status: newStatus,
     });
   } catch (error) {
-    logger.error('Seerbit webhook error:', error);
+    logger.error('Seerbit webhook error');
     res.status(500).json({
       success: false,
       message: 'Webhook processing failed',

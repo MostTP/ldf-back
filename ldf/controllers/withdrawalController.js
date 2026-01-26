@@ -1,6 +1,7 @@
 import { body, validationResult } from 'express-validator';
 import { Withdrawal } from '../models/index.js';
 import { createWithdrawal, getUserBalance, processWithdrawal } from '../services/withdrawalService.js';
+import { logger } from '../utils/logger.js';
 
 export const withdrawValidation = [
   body('amount')
@@ -30,7 +31,7 @@ export async function withdraw(req, res) {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.error('Withdrawal validation errors:', errors.array());
+      logger.error('Withdrawal validation errors');
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -41,7 +42,7 @@ export async function withdraw(req, res) {
     const { amount, currency, ...bankDetails } = req.body;
     const userId = req.user._id || req.user.id;
 
-    console.log('Withdrawal request:', { userId, amount, currency, bankDetails });
+    logger.info('Withdrawal request received');
 
     const withdrawal = await createWithdrawal(userId, parseFloat(amount), currency, bankDetails);
 
@@ -49,14 +50,14 @@ export async function withdraw(req, res) {
     let processedWithdrawal = withdrawal;
     if (process.env.NODE_ENV !== 'production') {
       try {
-        console.log(`[DEV MODE] Auto-processing withdrawal ${withdrawal.id} for testing`);
+        logger.info('[DEV MODE] Auto-processing withdrawal for testing');
         // Try to process via Seerbit, but if it fails, just mark as APPROVED
         try {
           processedWithdrawal = await processWithdrawal(withdrawal.id);
-          console.log(`[DEV MODE] Withdrawal ${withdrawal.id} processed via Seerbit. Status: ${processedWithdrawal.status}`);
+          logger.info('[DEV MODE] Withdrawal processed via Seerbit');
         } catch (seerbitError) {
           // If Seerbit fails (credentials not set), just mark as APPROVED for testing
-          console.warn(`[DEV MODE] Seerbit processing failed, marking as APPROVED for testing:`, seerbitError.message);
+          logger.warn('[DEV MODE] Seerbit processing failed, marking as APPROVED for testing');
           const { User, Earning } = await import('../models/index.js');
           processedWithdrawal = await Withdrawal.findByIdAndUpdate(
             withdrawal._id,
@@ -84,13 +85,13 @@ export async function withdraw(req, res) {
               $inc: { balance: dettyDecemberAmount },
             });
 
-            console.log(`[DEV MODE] [DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${userId} (10% of withdrawal ₦${parseFloat(amount)})`);
+            logger.info('[DEV MODE] Detty December bonus created');
           }
 
-          console.log(`[DEV MODE] Withdrawal ${withdrawal.id} marked as APPROVED (Seerbit not configured)`);
+          logger.info('[DEV MODE] Withdrawal marked as APPROVED (Seerbit not configured)');
         }
       } catch (error) {
-        console.warn(`[DEV MODE] Auto-processing failed for withdrawal ${withdrawal.id}:`, error.message);
+        logger.warn('[DEV MODE] Auto-processing failed');
         // Continue with original withdrawal (still PENDING)
       }
     }
@@ -103,7 +104,7 @@ export async function withdraw(req, res) {
       data: processedWithdrawal,
     });
   } catch (error) {
-    console.error('Withdrawal error:', error);
+    logger.error('Withdrawal error');
     res.status(400).json({
       success: false,
       message: error.message || 'Withdrawal failed',
@@ -121,7 +122,7 @@ export async function getBalance(req, res) {
       balance: balance,
     });
   } catch (error) {
-    console.error('Balance error:', error);
+    logger.error('Balance error');
     res.status(500).json({
       success: false,
       message: 'Failed to get balance',
@@ -153,7 +154,7 @@ export async function getWithdrawals(req, res) {
       offset: parseInt(offset),
     });
   } catch (error) {
-    console.error('Get withdrawals error:', error);
+    logger.error('Get withdrawals error');
     res.status(500).json({
       success: false,
       message: 'Failed to get withdrawals',

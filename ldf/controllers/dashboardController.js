@@ -51,11 +51,10 @@ export async function getProfile(req, res) {
       createdAt: user.createdAt,
     });
   } catch (error) {
-    console.error('Get profile error:', error);
+    logger.error('Get profile error');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch profile',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
@@ -66,7 +65,6 @@ export async function getProfile(req, res) {
 export async function getStats(req, res) {
   try {
     const userId = req.user.id;
-    console.log('Getting stats for user ID:', userId);
 
     // Initialize defaults
     let totalEarnings = 0;
@@ -229,18 +227,6 @@ export async function getStats(req, res) {
     const dettyDecNum = Number(dettyDecEarnings) || 0;
     const totalEarningsNum = Number(totalEarnings) || 0;
 
-    // Log for debugging
-    console.log('Dashboard Stats for user', userId, {
-      affiliateAvailableNum,
-      matrixAvailableNum,
-      globalPoolAvailableNum,
-      dettyDecNum,
-      totalEarningsNum,
-      totalWithdrawable,
-      earningsCount: allEarnings.length,
-      sampleEarnings: allEarnings.slice(0, 3),
-    });
-
     const response = {
       success: true,
       // Core stats
@@ -267,14 +253,12 @@ export async function getStats(req, res) {
       slotsFilled: Number(slotsFilled) || 0,
     };
 
-    console.log('Sending response:', JSON.stringify(response, null, 2));
     res.json(response);
   } catch (error) {
-    console.error('Get stats error:', error);
+    logger.error('Get stats error');
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dashboard stats',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
@@ -408,11 +392,10 @@ export async function updateProfile(req, res) {
       createdAt: updatedUser.createdAt,
     });
   } catch (error) {
-    console.error('Update profile error:', error);
+    logger.error('Update profile error');
     res.status(500).json({
       success: false,
       message: 'Failed to update profile',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
@@ -464,11 +447,10 @@ export async function updateBankDetails(req, res) {
       },
     });
   } catch (error) {
-    console.error('Update bank details error:', error);
+    logger.error('Update bank details error');
     res.status(500).json({
       success: false,
       message: 'Failed to update bank details',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
@@ -538,11 +520,10 @@ export async function changePassword(req, res) {
       message: 'Password changed successfully',
     });
   } catch (error) {
-    console.error('Change password error:', error);
+    logger.error('Change password error');
     res.status(500).json({
       success: false,
       message: 'Failed to change password',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 }
