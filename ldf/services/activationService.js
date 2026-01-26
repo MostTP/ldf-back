@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { User, Coupon } from '../models/index.js';
 import { triggerActivationPayouts } from './earningsEngine.js';
-
-const prisma = new PrismaClient();
+import mongoose from 'mongoose';
 
 /**
  * Activate a user with a coupon
@@ -11,63 +10,45 @@ const prisma = new PrismaClient();
  * @returns {Promise<Object>} Activation result
  */
 export async function activateUser(userId, couponCode) {
-  console.log(`[ACTIVATION] Starting activation for user ${userId} with coupon ${couponCode}`);
-  
-  return await prisma.$transaction(async (tx) => {
-    // Validate user exists
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      include: { sponsor: true },
-    });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
+  try {
+    const user = await User.findById(userId).populate('sponsorId').session(session);
     if (!user) {
-      console.error(`[ACTIVATION] User ${userId} not found`);
       throw new Error('User not found');
     }
 
-    console.log(`[ACTIVATION] User found: ${user.firstName} ${user.lastName}, Sponsor: ${user.sponsorId || 'None'}`);
-
-    // Validate coupon
-    const coupon = await tx.coupon.findUnique({
-      where: { code: couponCode },
-      include: { agent: true },
-    });
-
+    const coupon = await Coupon.findOne({ code: couponCode }).populate('agentId').session(session);
     if (!coupon) {
-      console.error(`[ACTIVATION] Invalid coupon code: ${couponCode}`);
       throw new Error('Invalid coupon code');
     }
 
     if (coupon.isUsed) {
-      console.error(`[ACTIVATION] Coupon ${couponCode} already used`);
       throw new Error('Coupon has already been used');
     }
 
-    console.log(`[ACTIVATION] Coupon validated: ${couponCode} from agent ${coupon.agentId}`);
+    await Coupon.findByIdAndUpdate(coupon._id, {
+      isUsed: true,
+      usedBy: userId,
+      usedAt: new Date(),
+    }, { session });
 
-    // Mark coupon as used
-    await tx.coupon.update({
-      where: { id: coupon.id },
-      data: {
-        isUsed: true,
-        usedBy: userId,
-        usedAt: new Date(),
-      },
-    });
+    const payoutResult = await triggerActivationPayouts(userId, 50, session);
 
-    console.log(`[ACTIVATION] Coupon marked as used, triggering payouts...`);
-
-    // Trigger payouts
-    const payoutResult = await triggerActivationPayouts(userId, 50);
-    
-    console.log(`[ACTIVATION] Payouts completed:`, payoutResult);
+    await session.commitTransaction();
 
     return {
       success: true,
       message: 'Activation successful',
-      couponId: coupon.id,
+      couponId: coupon._id.toString(),
       payouts: payoutResult,
     };
-  });
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 }
 
