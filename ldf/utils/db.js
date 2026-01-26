@@ -1,49 +1,73 @@
-// Database connection utility
-// Provides a singleton Prisma client instance with proper connection handling
-// 
-// Neon PostgreSQL Configuration:
-// - Use pooled connection (?pgbouncer=true) for application: better performance, connection management
-// - Use direct connection (no ?pgbouncer=true) for migrations: required for schema changes
-// - Prisma automatically handles connection pooling when DATABASE_URL includes ?pgbouncer=true
-
-import { PrismaClient } from '@prisma/client';
+import mongoose from 'mongoose';
 import { logger } from './logger.js';
 
-// Create Prisma client instance
-// Prisma will use the DATABASE_URL from environment variables
-// For Neon: ensure DATABASE_URL includes ?pgbouncer=true for pooled connections
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' 
-    ? ['query', 'error', 'warn'] 
-    : ['error'],
-});
+let isConnected = false;
 
-// Test database connection
 export async function testConnection() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    logger.info('Database connection successful');
-    return { connected: true };
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.db.admin().ping();
+      return { connected: true };
+    }
+    return { connected: false, error: 'Not connected to database' };
   } catch (error) {
     logger.error('Database connection failed:', error.message);
-    return { 
-      connected: false, 
-      error: error.message 
-    };
+    return { connected: false, error: error.message };
   }
 }
 
-// Graceful shutdown handler
-export async function disconnect() {
+export async function connect() {
+  if (isConnected) {
+    return;
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set in environment variables');
+  }
+
   try {
-    await prisma.$disconnect();
-    logger.info('Database disconnected');
+    const options = {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
+
+    await mongoose.connect(process.env.DATABASE_URL, options);
+    isConnected = true;
+    logger.info('MongoDB connected');
+  } catch (error) {
+    isConnected = false;
+    logger.error('MongoDB connection error:', error.message);
+    throw error;
+  }
+}
+
+export async function disconnect() {
+  if (!isConnected) {
+    return;
+  }
+
+  try {
+    await mongoose.connection.close();
+    isConnected = false;
   } catch (error) {
     logger.error('Error disconnecting database:', error);
   }
 }
 
-// Handle process termination
+mongoose.connection.on('connected', () => {
+  isConnected = true;
+});
+
+mongoose.connection.on('error', (err) => {
+  logger.error('Mongoose connection error:', err);
+  isConnected = false;
+});
+
+mongoose.connection.on('disconnected', () => {
+  isConnected = false;
+});
+
 process.on('beforeExit', async () => {
   await disconnect();
 });
@@ -58,5 +82,5 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-export default prisma;
+export default mongoose;
 

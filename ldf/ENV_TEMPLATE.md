@@ -5,10 +5,11 @@ Copy these variables to your `.env` file in the `ldf/` directory.
 ## Required Variables
 
 ```bash
-# Database (Neon PostgreSQL)
-# Use pooled connection for application: ?pgbouncer=true
-# Use direct connection for migrations: remove ?pgbouncer=true
-DATABASE_URL="postgresql://user:password@ep-xxx-xxx.region.aws.neon.tech/dbname?sslmode=require&pgbouncer=true"
+# Database (MongoDB)
+# Local MongoDB:
+# DATABASE_URL="mongodb://localhost:27017/ldf"
+# MongoDB Atlas (recommended for production):
+DATABASE_URL="mongodb+srv://user:password@cluster.mongodb.net/ldf?retryWrites=true&w=majority"
 
 # Application
 NODE_ENV=development
@@ -35,15 +36,22 @@ SEERBIT_SECRET_KEY=your-seerbit-secret-key
 SEERBIT_WEBHOOK_SECRET=your-seerbit-webhook-secret
 ```
 
-## Getting Your Neon Connection String
+## Getting Your MongoDB Connection String
 
-1. Go to [Neon Console](https://console.neon.tech)
-2. Select your project
-3. Go to "Connection Details"
-4. Copy the connection string
-5. For application: use the one with `?pgbouncer=true`
-6. For migrations: use the one without `?pgbouncer=true`
+### Local MongoDB
+```bash
+DATABASE_URL="mongodb://localhost:27017/ldf"
+```
 
-See [NEON_SETUP.md](../NEON_SETUP.md) for detailed setup instructions.
+### MongoDB Atlas
+1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. Select your cluster
+3. Click "Connect"
+4. Choose "Connect your application"
+5. Copy the connection string
+6. Replace `<password>` with your database password
+7. Replace `<dbname>` with `ldf`
+
+See [MONGODB_SETUP.md](../MONGODB_SETUP.md) for detailed setup instructions.
 
 
