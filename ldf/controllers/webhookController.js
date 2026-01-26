@@ -261,71 +261,79 @@ export async function handlePaymentWebhook(req, res) {
       }
     } else {
       // Default: premium tier activation
-      const session = await mongoose.startSession();
-      session.startTransaction();
-
       try {
-        // Update or create investment record
-        let investment = await Investment.findOne({ paymentReference }).session(session);
-        
-        if (investment) {
-          investment.status = 'completed';
-          investment.tier = 'PREMIUM';
-          await investment.save({ session });
-        } else {
-          investment = await Investment.create([{
-            userId: finalUserId,
-            amount: parseFloat(amount),
-            tier: 'PREMIUM',
-            paymentReference,
-            status: 'completed',
-          }], { session });
-          investment = investment[0];
-        }
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        // Upgrade user to premium
-        await User.findByIdAndUpdate(
-          finalUserId,
-          { isPremium: true },
-          { session }
-        );
-
-        // Create earning entry for premium ROI tracking (if not already exists)
-        const existingEarning = await Earning.findOne({
-          userId: finalUserId,
-          type: 'PREMIUM_ROI',
-          description: { $regex: paymentReference },
-        }).session(session);
-
-        if (!existingEarning) {
-          const premiumAmount = parseFloat(amount);
-          await Earning.create([{
-            userId: finalUserId,
-            amount: premiumAmount,
-            type: 'PREMIUM_ROI',
-            description: `Premium tier investment - ${paymentReference}`,
-          }], { session });
+        try {
+          // Update or create investment record
+          let investment = await Investment.findOne({ paymentReference }).session(session);
           
-          // Increment user's balance
+          if (investment) {
+            investment.status = 'completed';
+            investment.tier = 'PREMIUM';
+            await investment.save({ session });
+          } else {
+            investment = await Investment.create([{
+              userId: finalUserId,
+              amount: parseFloat(amount),
+              tier: 'PREMIUM',
+              paymentReference,
+              status: 'completed',
+            }], { session });
+            investment = investment[0];
+          }
+
+          // Upgrade user to premium
           await User.findByIdAndUpdate(
             finalUserId,
-            { $inc: { balance: premiumAmount } },
+            { isPremium: true },
             { session }
           );
+
+          // Create earning entry for premium ROI tracking (if not already exists)
+          const existingEarning = await Earning.findOne({
+            userId: finalUserId,
+            type: 'PREMIUM_ROI',
+            description: { $regex: paymentReference },
+          }).session(session);
+
+          if (!existingEarning) {
+            const premiumAmount = parseFloat(amount);
+            await Earning.create([{
+              userId: finalUserId,
+              amount: premiumAmount,
+              type: 'PREMIUM_ROI',
+              description: `Premium tier investment - ${paymentReference}`,
+            }], { session });
+            
+            // Increment user's balance
+            await User.findByIdAndUpdate(
+              finalUserId,
+              { $inc: { balance: premiumAmount } },
+              { session }
+            );
+          }
+
+          await session.commitTransaction();
+          session.endSession();
+        } catch (transactionError) {
+          await session.abortTransaction();
+          session.endSession();
+          throw transactionError;
         }
 
-        await session.commitTransaction();
-        session.endSession();
-      } catch (transactionError) {
-        await session.abortTransaction();
-        session.endSession();
-        throw transactionError;
+        return res.json({
+          success: true,
+          message: 'Payment processed successfully',
+        });
+      } catch (error) {
+        logger.error('Error processing premium payment:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to process premium payment',
+        });
       }
-
-      return res.json({
-      success: true,
-      message: 'Payment processed successfully',
-    });
     }
   } catch (error) {
     logger.error('Webhook error:', error);
