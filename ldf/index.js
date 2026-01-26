@@ -97,7 +97,7 @@ const corsOptions = {
         logger.warn(`CORS: Allowing origin in production mode: ${normalizedOrigin}`);
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+      callback(new Error('Not allowed by CORS'));
       }
     }
   },
@@ -164,16 +164,39 @@ app.get('/health', async (req, res) => {
   };
 
   // Check database connection
-  try {
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-    await prisma.$queryRaw`SELECT 1`;
-    await prisma.$disconnect();
-    health.database = 'connected';
-  } catch (error) {
-    health.database = 'disconnected';
-    health.databaseError = process.env.NODE_ENV === 'development' ? error.message : 'Database connection failed';
-    health.status = 'degraded';
+  const dbUrl = process.env.DATABASE_URL || '';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+  const isNeon = dbUrl.includes('neon.tech') || dbUrl.includes('neon.tech');
+  
+  // Warn if using localhost in production
+  if (isProduction && isLocalhost) {
+    health.database = 'misconfigured';
+    health.databaseError = 'DATABASE_URL uses localhost - this will not work in production. Use your production database hostname.';
+    health.status = 'error';
+  } else {
+    try {
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      await prisma.$queryRaw`SELECT 1`;
+      await prisma.$disconnect();
+      health.database = 'connected';
+    } catch (error) {
+      health.database = 'disconnected';
+      health.databaseError = process.env.NODE_ENV === 'development' 
+        ? error.message 
+        : 'Database connection failed. Check DATABASE_URL and ensure database is accessible.';
+      health.status = 'degraded';
+      
+      // Provide helpful hints for common errors
+      if (error.message?.includes("Can't reach database server")) {
+        health.databaseHint = 'Check if DATABASE_URL hostname is correct and database service is running.';
+      } else if (error.message?.includes("authentication failed")) {
+        health.databaseHint = 'Check database username and password in DATABASE_URL.';
+      } else if (error.message?.includes("does not exist")) {
+        health.databaseHint = 'Check if database name in DATABASE_URL is correct.';
+      }
+    }
   }
 
   // Check critical environment variables
@@ -181,6 +204,12 @@ app.get('/health', async (req, res) => {
     hasJWTSecret: !!process.env.JWT_SECRET,
     hasDatabaseUrl: !!process.env.DATABASE_URL,
     hasFrontendUrl: !!process.env.FRONTEND_URL,
+    databaseUrlFormat: isLocalhost 
+      ? 'localhost (local only)' 
+      : isNeon 
+        ? 'Neon (production)' 
+        : 'production hostname',
+    databaseProvider: isNeon ? 'Neon' : isLocalhost ? 'Local' : 'Other',
   };
 
   const statusCode = health.status === 'ok' ? 200 : 503;
@@ -201,7 +230,25 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Check for common configuration issues
+  const dbUrl = process.env.DATABASE_URL || '';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+  
+  if (isProduction && isLocalhost) {
+    logger.error('⚠️  WARNING: DATABASE_URL uses localhost in production!');
+    logger.error('   This will NOT work. Update DATABASE_URL with your production database hostname.');
+    logger.error('   See NEON_SETUP.md for Neon setup or DATABASE_SETUP.md for other providers.');
+  }
+  
+  if (dbUrl.includes('neon.tech')) {
+    logger.info('✅ Using Neon database (pooler connection)');
+  }
+  
   if (process.env.NODE_ENV !== 'production') {
     logger.info(`Health check: http://localhost:${PORT}/health`);
+  } else {
+    logger.info(`Health check: https://ldf-back-1.onrender.com/health`);
   }
 });
