@@ -252,6 +252,13 @@ export async function handlePaymentWebhook(req, res) {
           logger.error('Error processing AGENT_COUPON payment:', transactionError);
           throw transactionError;
         }
+      } catch (error) {
+        logger.error('Error processing AGENT_COUPON payment:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to process agent coupon payment',
+        });
+      }
     } else {
       // Default: premium tier activation
       const session = await mongoose.startSession();
