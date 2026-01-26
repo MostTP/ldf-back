@@ -19,7 +19,6 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    index: true,
   },
   phone: {
     type: String,
@@ -34,7 +33,6 @@ const userSchema = new mongoose.Schema({
     trim: true,
     minlength: 6,
     maxlength: 15,
-    index: true,
   },
   passwordHash: {
     type: String,
@@ -53,7 +51,6 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
-    index: true,
   },
   // Activation & Status
   couponCode: {
@@ -67,7 +64,6 @@ const userSchema = new mongoose.Schema({
   emailVerificationToken: {
     type: String,
     default: null,
-    index: true,
   },
   emailVerificationTokenExpiry: {
     type: Date,
@@ -114,8 +110,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
+// Note: email and username already have indexes from unique: true
 userSchema.index({ sponsorId: 1 });
 userSchema.index({ emailVerificationToken: 1 });
 

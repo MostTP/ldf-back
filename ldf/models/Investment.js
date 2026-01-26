@@ -5,7 +5,6 @@ const investmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true,
   },
   amount: {
     type: Number,
@@ -21,22 +20,20 @@ const investmentSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
   },
   status: {
     type: String,
     default: 'pending',
     enum: ['pending', 'completed', 'failed'],
-    index: true,
   },
 }, {
   timestamps: true,
 });
 
 // Indexes
+// Note: paymentReference already has an index from unique: true
 investmentSchema.index({ userId: 1 });
 investmentSchema.index({ status: 1 });
-investmentSchema.index({ paymentReference: 1 });
 
 const Investment = mongoose.model('Investment', investmentSchema);
 

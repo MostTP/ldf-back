@@ -3,11 +3,21 @@ import Flutterwave from 'flutterwave-node-v3';
 import { logger } from '../utils/logger.js';
 import mongoose from 'mongoose';
 
-// Initialize Flutterwave SDK
-const flw = new Flutterwave(
-  process.env.FLUTTERWAVE_PUBLIC_KEY,
-  process.env.FLUTTERWAVE_SECRET_KEY
-);
+// Initialize Flutterwave SDK lazily
+let flw = null;
+function getFlutterwaveInstance() {
+  if (!flw) {
+    const publicKey = process.env.FLUTTERWAVE_PUBLIC_KEY;
+    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+    
+    if (!publicKey || !secretKey) {
+      throw new Error('Flutterwave keys not configured. Please set FLUTTERWAVE_PUBLIC_KEY and FLUTTERWAVE_SECRET_KEY environment variables.');
+    }
+    
+    flw = new Flutterwave(publicKey, secretKey);
+  }
+  return flw;
+}
 
 /**
  * Initialize payment for premium tier upgrade
@@ -213,8 +223,8 @@ export async function redirectAgentCouponPayment(req, res) {
       throw new Error('Flutterwave secret key not configured');
     }
 
-    // Initialize Flutterwave
-    const flw = new Flutterwave(process.env.FLUTTERWAVE_PUBLIC_KEY, flutterwaveSecretKey);
+    // Get Flutterwave instance
+    const flw = getFlutterwaveInstance();
 
     // Create payment link using Flutterwave API
     const paymentData = {
@@ -363,6 +373,7 @@ export async function verifyAgentCouponPayment(req, res) {
 
     // Verify payment with Flutterwave
     try {
+      const flw = getFlutterwaveInstance();
       const verificationResponse = await flw.Transaction.verify({ tx_ref });
       
       if (verificationResponse.status !== 'success') {
@@ -372,6 +383,7 @@ export async function verifyAgentCouponPayment(req, res) {
         });
       }
 
+      
       const paymentData = verificationResponse.data;
       const paymentStatus = paymentData.status;
       const paymentAmount = parseFloat(paymentData.amount);

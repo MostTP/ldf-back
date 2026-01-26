@@ -5,19 +5,16 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
     uppercase: true,
   },
   agentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true,
   },
   isUsed: {
     type: Boolean,
     default: false,
-    index: true,
   },
   usedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -33,7 +30,7 @@ const couponSchema = new mongoose.Schema({
 });
 
 // Indexes
-couponSchema.index({ code: 1 });
+// Note: code already has an index from unique: true
 couponSchema.index({ agentId: 1 });
 couponSchema.index({ isUsed: 1 });
 

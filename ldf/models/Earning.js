@@ -5,7 +5,6 @@ const earningSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true,
   },
   amount: {
     type: Number,
@@ -15,7 +14,6 @@ const earningSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    index: true,
     // REFERRAL_BONUS, MATRIX_LEVEL_1-5, GLOBAL_POOL_ROI, PREMIUM_ROI, DETTY_DECEMBER, etc.
   },
   description: {
