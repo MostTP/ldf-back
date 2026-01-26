@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { User, Investment, Earning } from '../models/index.js';
+import mongoose from 'mongoose';
 
 /**
  * Monthly Global Pool ROI distribution
@@ -13,30 +12,32 @@ export async function distributeGlobalPoolROI() {
     console.log('[GLOBAL_POOL] Starting monthly distribution...');
 
     // Calculate available pool: Total Contributions - Total Distributions
-    const totalContributions = await prisma.earning.aggregate({
-      where: {
-        type: 'GLOBAL_POOL_CONTRIBUTION',
+    const totalContributionsResult = await Earning.aggregate([
+      {
+        $match: { type: 'GLOBAL_POOL_CONTRIBUTION' }
       },
-      _sum: {
-        amount: true,
-      },
-    });
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
-    const totalDistributed = await prisma.earning.aggregate({
-      where: {
-        type: 'GLOBAL_POOL_ROI',
+    const totalDistributedResult = await Earning.aggregate([
+      {
+        $match: { type: 'GLOBAL_POOL_ROI' }
       },
-      _sum: {
-        amount: true,
-      },
-    });
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
-    const contributionsAmount = totalContributions._sum.amount 
-      ? parseFloat(totalContributions._sum.amount.toString()) 
-      : 0;
-    const distributedAmount = totalDistributed._sum.amount 
-      ? parseFloat(totalDistributed._sum.amount.toString()) 
-      : 0;
+    const contributionsAmount = totalContributionsResult[0]?.total || 0;
+    const distributedAmount = totalDistributedResult[0]?.total || 0;
     
     const availablePool = contributionsAmount - distributedAmount;
 
@@ -57,48 +58,49 @@ export async function distributeGlobalPoolROI() {
     }
 
     // Get all email-verified users
-    const allUsers = await prisma.user.findMany({
-      where: {
-        emailVerified: true,
-      },
-      select: {
-        id: true,
-      },
-    });
+    const allUsers = await User.find({ emailVerified: true }).select('_id');
 
     // Calculate eligibility and distribution amounts for each user
     const eligibleUsers = [];
     let totalNeeded = 0;
 
     for (const user of allUsers) {
+      const userId = user._id || user.id;
+      
       // Get user's AFFILIATE INCOME (REFERRAL_BONUS)
-      const affiliateEarnings = await prisma.earning.aggregate({
-        where: {
-          userId: user.id,
-          type: 'REFERRAL_BONUS',
+      const affiliateEarningsResult = await Earning.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            type: 'REFERRAL_BONUS'
+          }
         },
-        _sum: {
-          amount: true,
-        },
-      });
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
 
       // Get user's GLOBAL_POOL_ROI earnings
-      const globalPoolEarnings = await prisma.earning.aggregate({
-        where: {
-          userId: user.id,
-          type: 'GLOBAL_POOL_ROI',
+      const globalPoolEarningsResult = await Earning.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            type: 'GLOBAL_POOL_ROI'
+          }
         },
-        _sum: {
-          amount: true,
-        },
-      });
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
 
-      const affiliateTotal = affiliateEarnings._sum.amount 
-        ? parseFloat(affiliateEarnings._sum.amount.toString()) 
-        : 0;
-      const globalPoolTotal = globalPoolEarnings._sum.amount 
-        ? parseFloat(globalPoolEarnings._sum.amount.toString()) 
-        : 0;
+      const affiliateTotal = affiliateEarningsResult[0]?.total || 0;
+      const globalPoolTotal = globalPoolEarningsResult[0]?.total || 0;
 
       const combinedTotal = affiliateTotal + globalPoolTotal;
       const targetAmount = 10000; // ₦10,000
@@ -107,7 +109,7 @@ export async function distributeGlobalPoolROI() {
       if (combinedTotal < targetAmount) {
         const amountNeeded = targetAmount - combinedTotal;
         eligibleUsers.push({
-          id: user.id,
+          id: userId,
           affiliateTotal,
           globalPoolTotal,
           combinedTotal,
@@ -134,7 +136,10 @@ export async function distributeGlobalPoolROI() {
     let totalDistributedThisRound = 0;
     let usersCredited = 0;
 
-    await prisma.$transaction(async (tx) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
       for (const user of eligibleUsers) {
         // Only distribute if pool has funds available
         if (availablePool - totalDistributedThisRound <= 0) {
@@ -147,31 +152,33 @@ export async function distributeGlobalPoolROI() {
         const amountToCredit = Math.min(user.amountNeeded, remainingPool);
 
         if (amountToCredit > 0) {
-          await tx.earning.create({
-            data: {
-              userId: user.id,
-              amount: amountToCredit,
-              type: 'GLOBAL_POOL_ROI',
-              description: `Global pool top-up to reach ₦10,000 (AFFILIATE: ₦${user.affiliateTotal}, GLOBAL_POOL: ₦${user.globalPoolTotal})`,
-            },
-          });
+          await Earning.create([{
+            userId: user.id,
+            amount: amountToCredit,
+            type: 'GLOBAL_POOL_ROI',
+            description: `Global pool top-up to reach ₦10,000 (AFFILIATE: ₦${user.affiliateTotal}, GLOBAL_POOL: ₦${user.globalPoolTotal})`,
+          }], { session });
           
           // Increment user's balance
-          await tx.user.update({
-            where: { id: user.id },
-            data: {
-              balance: {
-                increment: amountToCredit,
-              },
-            },
-          });
+          await User.findByIdAndUpdate(
+            user.id,
+            { $inc: { balance: amountToCredit } },
+            { session }
+          );
 
           totalDistributedThisRound += amountToCredit;
           usersCredited++;
           console.log(`[GLOBAL_POOL] Credited user ${user.id}: ₦${amountToCredit} (needed: ₦${user.amountNeeded}, combined total was: ₦${user.combinedTotal})`);
         }
       }
-    });
+
+      await session.commitTransaction();
+      session.endSession();
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
 
     console.log(`[GLOBAL_POOL] Distribution completed: ₦${totalDistributedThisRound} distributed to ${usersCredited} users`);
 
@@ -196,52 +203,54 @@ export async function distributeGlobalPoolROI() {
  */
 export async function distributePremiumROI() {
   try {
-    const premiumUsers = await prisma.user.findMany({
-      where: {
-        isPremium: true,
-        emailVerified: true,
-      },
-      include: {
-        investments: {
-          where: {
-            tier: 'PREMIUM',
-            status: 'completed',
-          },
-        },
-      },
+    const premiumUsers = await User.find({
+      isPremium: true,
+      emailVerified: true,
     });
 
-    await prisma.$transaction(async (tx) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
       for (const user of premiumUsers) {
+        // Get user's premium investments
+        const investments = await Investment.find({
+          userId: user._id,
+          tier: 'PREMIUM',
+          status: 'completed',
+        });
+
         // Calculate ROI based on total investments (example: 10% quarterly)
-        const totalInvestment = user.investments.reduce(
+        const totalInvestment = investments.reduce(
           (sum, inv) => sum + Number(inv.amount),
           0
         );
         const quarterlyROI = totalInvestment * 0.1; // 10% quarterly
 
         if (quarterlyROI > 0) {
-          await tx.earning.create({
-            data: {
-              userId: user.id,
-              amount: quarterlyROI,
-              type: 'PREMIUM_ROI',
-              description: 'Quarterly premium ROI distribution',
-            },
-          });
+          await Earning.create([{
+            userId: user._id,
+            amount: quarterlyROI,
+            type: 'PREMIUM_ROI',
+            description: 'Quarterly premium ROI distribution',
+          }], { session });
           
           // Increment user's balance
-          await tx.user.update({
-            where: { id: user.id },
-            data: {
-              balance: {
-                increment: quarterlyROI,
-              },
-            },
-          });
+          await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { balance: quarterlyROI } },
+            { session }
+          );
         }
       }
-    });
+
+      await session.commitTransaction();
+      session.endSession();
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
 
     console.log(`Distributed premium ROI to ${premiumUsers.length} users`);
   } catch (error) {
@@ -255,4 +264,5 @@ export default {
   distributeGlobalPoolROI,
   distributePremiumROI,
 };
+
 

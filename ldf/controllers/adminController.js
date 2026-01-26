@@ -1,9 +1,7 @@
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import { User } from '../models/index.js';
 import { processWithdrawal } from '../services/withdrawalService.js';
 import { logger } from '../utils/logger.js';
-
-const prisma = new PrismaClient();
 
 export const upgradeToAgentValidation = [
   body('userId')
@@ -38,17 +36,11 @@ export async function upgradeToAgent(req, res) {
 
     const { userId } = req.body;
 
-    const user = await prisma.user.update({
-      where: { id: parseInt(userId) },
-      data: { isAgent: true },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        isAgent: true,
-      },
-    });
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { isAgent: true },
+      { new: true, select: '_id firstName lastName email isAgent' }
+    );
 
     res.json({
       success: true,
@@ -81,22 +73,11 @@ export async function creditAgentCoupons(req, res) {
 
     const { userId, credits } = req.body;
 
-    const user = await prisma.user.update({
-      where: { id: parseInt(userId) },
-      data: {
-        agentCouponCredits: {
-          increment: parseInt(credits),
-        },
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        isAgent: true,
-        agentCouponCredits: true,
-      },
-    });
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { agentCouponCredits: parseInt(credits) } },
+      { new: true, select: '_id firstName lastName email isAgent agentCouponCredits' }
+    );
 
     res.json({
       success: true,

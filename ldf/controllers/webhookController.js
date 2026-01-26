@@ -1,8 +1,7 @@
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { User, Investment, Earning } from '../models/index.js';
 import { logger } from '../utils/logger.js';
-
-const prisma = new PrismaClient();
+import mongoose from 'mongoose';
 
 /**
  * Verify Flutterwave webhook signature
@@ -144,30 +143,26 @@ export async function handlePaymentWebhook(req, res) {
     }
 
     // Check if payment already processed (idempotency)
-    const existingInvestment = await prisma.investment.findUnique({
-      where: { paymentReference },
-      include: {
-        user: {
-          select: { agentCouponCredits: true },
-        },
-      },
-    });
+    const existingInvestment = await Investment.findOne({ paymentReference })
+      .populate('userId', 'agentCouponCredits');
 
     if (existingInvestment && existingInvestment.status === 'completed') {
-      logger.info(`Payment ${paymentReference} already processed. Current user balance: ${existingInvestment.user?.agentCouponCredits || 'N/A'}`);
+      const user = existingInvestment.userId;
+      const credits = user?.agentCouponCredits || 0;
+      logger.info(`Payment ${paymentReference} already processed. Current user balance: ${credits}`);
       return res.json({
         success: true,
         message: 'Payment already processed',
         data: {
           alreadyProcessed: true,
-          currentBalance: existingInvestment.user?.agentCouponCredits,
+          currentBalance: credits,
         },
       });
     }
 
     const finalUserId = userId 
-      ? parseInt(userId) 
-      : existingInvestment?.userId;
+      ? userId 
+      : existingInvestment?.userId?._id || existingInvestment?.userId;
 
     if (!finalUserId) {
       return res.status(400).json({
@@ -181,10 +176,8 @@ export async function handlePaymentWebhook(req, res) {
       // Agent coupon credits purchase
       try {
         // First, verify user exists
-        const userExists = await prisma.user.findUnique({
-          where: { id: finalUserId },
-          select: { id: true, agentCouponCredits: true, isAgent: true },
-        });
+        const userExists = await User.findById(finalUserId)
+          .select('agentCouponCredits isAgent');
 
         if (!userExists) {
           logger.error(`User ${finalUserId} not found for payment ${paymentReference}`);
@@ -208,113 +201,119 @@ export async function handlePaymentWebhook(req, res) {
         }
 
         // Process in transaction
-        const result = await prisma.$transaction(async (tx) => {
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
           // Update or create investment record with tier AGENT_COUPON
-          await tx.investment.upsert({
-            where: { paymentReference },
-            update: {
-              status: 'completed',
-              tier: 'AGENT_COUPON',
-            },
-            create: {
+          let investment = await Investment.findOne({ paymentReference }).session(session);
+          
+          if (investment) {
+            investment.status = 'completed';
+            investment.tier = 'AGENT_COUPON';
+            await investment.save({ session });
+          } else {
+            investment = await Investment.create([{
               userId: finalUserId,
               amount: parseFloat(amount),
               tier: 'AGENT_COUPON',
               paymentReference,
               status: 'completed',
-            },
-          });
+            }], { session });
+            investment = investment[0];
+          }
 
           // Credit agent coupon balance
-          const updatedUser = await tx.user.update({
-            where: { id: finalUserId },
-            data: {
-              agentCouponCredits: {
-                increment: creditsToAdd,
-              },
-            },
-            select: { 
-              id: true,
-              agentCouponCredits: true,
-              firstName: true,
-              lastName: true,
-            },
-          });
+          const updatedUser = await User.findByIdAndUpdate(
+            finalUserId,
+            { $inc: { agentCouponCredits: creditsToAdd } },
+            { session, new: true }
+          ).select('agentCouponCredits firstName lastName');
+
+          await session.commitTransaction();
+          session.endSession();
 
           logger.info(`Successfully credited ${creditsToAdd} coupon credits to user ${finalUserId} (${updatedUser.firstName} ${updatedUser.lastName}). New balance: ${updatedUser.agentCouponCredits}`);
 
-          return updatedUser;
-        });
+          const result = updatedUser;
 
-        return res.json({
-          success: true,
-          message: 'Agent coupon payment processed successfully',
-          data: {
-            userId: finalUserId,
-            creditsAdded: creditsToAdd,
-            newBalance: result.agentCouponCredits,
-          },
-        });
-      } catch (transactionError) {
-        logger.error('Error processing AGENT_COUPON payment:', transactionError);
-        throw transactionError;
-      }
+          return res.json({
+            success: true,
+            message: 'Agent coupon payment processed successfully',
+            data: {
+              userId: finalUserId,
+              creditsAdded: creditsToAdd,
+              newBalance: result.agentCouponCredits,
+            },
+          });
+        } catch (transactionError) {
+          await session.abortTransaction();
+          session.endSession();
+          logger.error('Error processing AGENT_COUPON payment:', transactionError);
+          throw transactionError;
+        }
     } else {
       // Default: premium tier activation
-    await prisma.$transaction(async (tx) => {
-      // Update or create investment record
-        await tx.investment.upsert({
-        where: { paymentReference },
-        update: {
-          status: 'completed',
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        // Update or create investment record
+        let investment = await Investment.findOne({ paymentReference }).session(session);
+        
+        if (investment) {
+          investment.status = 'completed';
+          investment.tier = 'PREMIUM';
+          await investment.save({ session });
+        } else {
+          investment = await Investment.create([{
+            userId: finalUserId,
+            amount: parseFloat(amount),
             tier: 'PREMIUM',
-        },
-        create: {
-          userId: finalUserId,
-          amount: parseFloat(amount),
-          tier: 'PREMIUM',
-          paymentReference,
-          status: 'completed',
-        },
-      });
+            paymentReference,
+            status: 'completed',
+          }], { session });
+          investment = investment[0];
+        }
 
-      // Upgrade user to premium
-      await tx.user.update({
-        where: { id: finalUserId },
-        data: { isPremium: true },
-      });
+        // Upgrade user to premium
+        await User.findByIdAndUpdate(
+          finalUserId,
+          { isPremium: true },
+          { session }
+        );
 
-      // Create earning entry for premium ROI tracking (if not already exists)
-      const existingEarning = await tx.earning.findFirst({
-        where: {
+        // Create earning entry for premium ROI tracking (if not already exists)
+        const existingEarning = await Earning.findOne({
           userId: finalUserId,
           type: 'PREMIUM_ROI',
-          description: { contains: paymentReference },
-        },
-      });
+          description: { $regex: paymentReference },
+        }).session(session);
 
-      if (!existingEarning) {
-        const premiumAmount = parseFloat(amount);
-        await tx.earning.create({
-          data: {
+        if (!existingEarning) {
+          const premiumAmount = parseFloat(amount);
+          await Earning.create([{
             userId: finalUserId,
             amount: premiumAmount,
             type: 'PREMIUM_ROI',
             description: `Premium tier investment - ${paymentReference}`,
-          },
-        });
-        
-        // Increment user's balance
-        await tx.user.update({
-          where: { id: finalUserId },
-          data: {
-            balance: {
-              increment: premiumAmount,
-            },
-          },
-        });
+          }], { session });
+          
+          // Increment user's balance
+          await User.findByIdAndUpdate(
+            finalUserId,
+            { $inc: { balance: premiumAmount } },
+            { session }
+          );
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+      } catch (transactionError) {
+        await session.abortTransaction();
+        session.endSession();
+        throw transactionError;
       }
-    });
 
       return res.json({
       success: true,

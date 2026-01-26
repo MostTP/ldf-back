@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { User, Investment } from '../models/index.js';
 import Flutterwave from 'flutterwave-node-v3';
 import { logger } from '../utils/logger.js';
-
-const prisma = new PrismaClient();
+import mongoose from 'mongoose';
 
 // Initialize Flutterwave SDK
 const flw = new Flutterwave(
@@ -15,14 +14,10 @@ const flw = new Flutterwave(
  */
 export async function initializePayment(req, res) {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const { amount } = req.body;
 
-    // Get user details
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -37,19 +32,15 @@ export async function initializePayment(req, res) {
       });
     }
 
-    // Create payment reference
     const paymentReference = `LDF-${userId}-${Date.now()}`;
     const paymentAmount = parseFloat(amount) || 5000;
 
-    // Create pending investment record first
-    await prisma.investment.create({
-      data: {
-        userId,
-        amount: paymentAmount,
-        tier: 'PREMIUM',
-        paymentReference,
-        status: 'pending',
-      },
+    await Investment.create({
+      userId,
+      amount: paymentAmount,
+      tier: 'PREMIUM',
+      paymentReference,
+      status: 'pending',
     });
 
     // Return payment details for inline payment widget
@@ -91,7 +82,7 @@ export async function initializePayment(req, res) {
  */
 export async function initializeAgentCouponPayment(req, res) {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const { quantity } = req.body;
 
     const credits = parseInt(quantity, 10) || 0;
@@ -102,18 +93,7 @@ export async function initializeAgentCouponPayment(req, res) {
       });
     }
 
-    // Get user details
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        firstName: true,
-        lastName: true,
-        isAgent: true,
-      },
-    });
+    const user = await User.findById(userId).select('_id email phone firstName lastName isAgent');
 
     if (!user) {
       return res.status(404).json({
@@ -134,14 +114,12 @@ export async function initializeAgentCouponPayment(req, res) {
     const paymentReference = `AGENT-${userId}-${Date.now()}`;
 
     // Create pending investment record for tracking (tier: AGENT_COUPON)
-    await prisma.investment.create({
-      data: {
-        userId,
-        amount: paymentAmount,
-        tier: 'AGENT_COUPON',
-        paymentReference,
-        status: 'pending',
-      },
+    await Investment.create({
+      userId,
+      amount: paymentAmount,
+      tier: 'AGENT_COUPON',
+      paymentReference,
+      status: 'pending',
     });
 
     return res.json({
@@ -195,17 +173,7 @@ export async function redirectAgentCouponPayment(req, res) {
     }
 
     // Get user details
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        firstName: true,
-        lastName: true,
-        isAgent: true,
-      },
-    });
+    const user = await User.findById(userId).select('_id email phone firstName lastName isAgent');
 
     if (!user) {
       return res.status(404).json({
@@ -226,14 +194,12 @@ export async function redirectAgentCouponPayment(req, res) {
     const paymentReference = `AGENT-${userId}-${Date.now()}`;
 
     // Create pending investment record
-    await prisma.investment.create({
-      data: {
-        userId,
-        amount: paymentAmount,
-        tier: 'AGENT_COUPON',
-        paymentReference,
-        status: 'pending',
-      },
+    await Investment.create({
+      userId,
+      amount: paymentAmount,
+      tier: 'AGENT_COUPON',
+      paymentReference,
+      status: 'pending',
     });
 
     // Build redirect URL (Flutterwave will redirect back here after payment)
@@ -317,10 +283,7 @@ export async function agentCouponPaymentCallback(req, res) {
     }
 
     // Find the investment record
-    const investment = await prisma.investment.findUnique({
-      where: { paymentReference: tx_ref },
-      include: { user: true },
-    });
+    const investment = await Investment.findOne({ paymentReference: tx_ref });
 
     if (!investment) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -363,10 +326,8 @@ export async function verifyAgentCouponPayment(req, res) {
     }
 
     // Find the investment record
-    const investment = await prisma.investment.findUnique({
-      where: { paymentReference: tx_ref },
-      include: { user: true },
-    });
+    const investment = await Investment.findOne({ paymentReference: tx_ref })
+      .populate('userId', 'agentCouponCredits');
 
     if (!investment) {
       return res.status(404).json({
@@ -375,7 +336,13 @@ export async function verifyAgentCouponPayment(req, res) {
       });
     }
 
-    if (investment.userId !== userId) {
+    // Convert userId to string for comparison (handle both populated and non-populated)
+    const investmentUserId = investment.userId._id 
+      ? investment.userId._id.toString() 
+      : (investment.userId.toString ? investment.userId.toString() : String(investment.userId));
+    const requestUserId = userId.toString ? userId.toString() : String(userId);
+
+    if (investmentUserId !== requestUserId) {
       return res.status(403).json({
         success: false,
         message: 'You can only verify your own payments',
@@ -383,11 +350,13 @@ export async function verifyAgentCouponPayment(req, res) {
     }
 
     if (investment.status === 'completed') {
+      const user = investment.userId;
+      const credits = (user && user.agentCouponCredits) ? user.agentCouponCredits : 0;
       return res.json({
         success: true,
         message: 'Payment already processed',
         data: {
-          credits: investment.user.agentCouponCredits,
+          credits: credits,
         },
       });
     }
@@ -424,42 +393,46 @@ export async function verifyAgentCouponPayment(req, res) {
       const creditsToAdd = credits > 0 ? credits : Math.floor(paymentAmount / COUPON_PRICE);
 
       if (purpose === 'AGENT_COUPON' && creditsToAdd > 0) {
-        // Process the payment
-        await prisma.$transaction(async (tx) => {
-          await tx.investment.update({
-            where: { paymentReference: tx_ref },
-            data: {
+        // Process the payment using Mongoose session for transaction
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+          await Investment.findOneAndUpdate(
+            { paymentReference: tx_ref },
+            {
               status: 'completed',
               tier: 'AGENT_COUPON',
             },
-          });
+            { session }
+          );
 
-          const updatedUser = await tx.user.update({
-            where: { id: userId },
-            data: {
-              agentCouponCredits: {
-                increment: creditsToAdd,
-              },
+          const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            {
+              $inc: { agentCouponCredits: creditsToAdd },
             },
-            select: { agentCouponCredits: true },
-          });
+            { session, new: true, select: 'agentCouponCredits' }
+          );
+
+          await session.commitTransaction();
+          session.endSession();
 
           logger.info(`Manually verified and credited ${creditsToAdd} coupon credits to user ${userId}. New balance: ${updatedUser.agentCouponCredits}`);
-        });
 
-        const updatedUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { agentCouponCredits: true },
-        });
-
-        return res.json({
-          success: true,
-          message: `Payment verified and ${creditsToAdd} coupon credit(s) added successfully`,
-          data: {
-            credits: creditsToAdd,
-            newBalance: updatedUser.agentCouponCredits,
-          },
-        });
+          return res.json({
+            success: true,
+            message: `Payment verified and ${creditsToAdd} coupon credit(s) added successfully`,
+            data: {
+              credits: creditsToAdd,
+              newBalance: updatedUser.agentCouponCredits,
+            },
+          });
+        } catch (transactionError) {
+          await session.abortTransaction();
+          session.endSession();
+          throw transactionError;
+        }
       } else {
         return res.status(400).json({
           success: false,

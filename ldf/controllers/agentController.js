@@ -1,8 +1,6 @@
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import { User, Coupon } from '../models/index.js';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
 
 export const generateCouponValidation = [
   body('quantity')
@@ -24,15 +22,10 @@ export async function generateCoupons(req, res) {
       });
     }
 
-    const agentId = req.user.id;
+    const agentId = req.user._id || req.user.id;
     const quantity = parseInt(req.body.quantity) || 1;
 
-    // Simple credit-based limit: 1 credit per coupon
-    const agent = await prisma.user.findUnique({
-      where: { id: agentId },
-      select: { agentCouponCredits: true },
-    });
-
+    const agent = await User.findById(agentId).select('agentCouponCredits');
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -48,29 +41,17 @@ export async function generateCoupons(req, res) {
     }
 
     const coupons = [];
-
     for (let i = 0; i < quantity; i++) {
-      // Generate secure coupon code
       const code = `LDF-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
-
-      const coupon = await prisma.coupon.create({
-        data: {
-          code,
-          agentId,
-        },
+      const coupon = await Coupon.create({
+        code,
+        agentId,
       });
-
       coupons.push(coupon);
     }
 
-    // Deduct credits
-    await prisma.user.update({
-      where: { id: agentId },
-      data: {
-        agentCouponCredits: {
-          decrement: quantity,
-        },
-      },
+    await User.findByIdAndUpdate(agentId, {
+      $inc: { agentCouponCredits: -quantity },
     });
 
     res.status(201).json({
@@ -92,22 +73,11 @@ export async function generateCoupons(req, res) {
  */
 export async function getMyCoupons(req, res) {
   try {
-    const agentId = req.user.id;
+    const agentId = req.user._id || req.user.id;
 
-    const coupons = await prisma.coupon.findMany({
-      where: { agentId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        usedByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
+    const coupons = await Coupon.find({ agentId })
+      .populate('usedBy', 'firstName lastName email')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,

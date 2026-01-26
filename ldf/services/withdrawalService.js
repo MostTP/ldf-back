@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { User, Earning, Withdrawal } from '../models/index.js';
+import mongoose from 'mongoose';
 
 /**
  * Get user's stored balance (fast - returns cached value)
@@ -8,15 +7,10 @@ const prisma = new PrismaClient();
  * @returns {Promise<number>} Stored balance
  */
 export async function getUserBalance(userId) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { balance: true },
-  });
-
+  const user = await User.findById(userId).select('balance');
   if (!user) {
     throw new Error('User not found');
   }
-
   return Number(user.balance || 0);
 }
 
@@ -26,30 +20,26 @@ export async function getUserBalance(userId) {
  * @returns {Promise<number>} Recalculated balance
  */
 export async function recalculateBalance(userId) {
-  const result = await prisma.earning.aggregate({
-    where: { userId },
-    _sum: { amount: true },
-  });
+  const result = await Earning.aggregate([
+    { $match: { userId: mongoose.Types.ObjectId(userId) } },
+    { $group: { _id: null, total: { $sum: '$amount' } } },
+  ]);
 
-  // Get total withdrawals (APPROVED or PAID only)
-  const withdrawals = await prisma.withdrawal.aggregate({
-    where: {
-      userId,
-      status: { in: ['APPROVED', 'PAID'] },
+  const withdrawals = await Withdrawal.aggregate([
+    {
+      $match: {
+        userId: mongoose.Types.ObjectId(userId),
+        status: { $in: ['APPROVED', 'PAID'] },
+      },
     },
-    _sum: { amount: true },
-  });
+    { $group: { _id: null, total: { $sum: '$amount' } } },
+  ]);
 
-  const totalEarnings = Number(result._sum.amount || 0);
-  const totalWithdrawn = Number(withdrawals._sum.amount || 0);
+  const totalEarnings = Number(result[0]?.total || 0);
+  const totalWithdrawn = Number(withdrawals[0]?.total || 0);
   const newBalance = totalEarnings - totalWithdrawn;
 
-  // Update stored balance
-  await prisma.user.update({
-    where: { id: userId },
-    data: { balance: newBalance },
-  });
-
+  await User.findByIdAndUpdate(userId, { balance: newBalance });
   return newBalance;
 }
 
@@ -60,13 +50,8 @@ export async function recalculateBalance(userId) {
  * @returns {Promise<void>}
  */
 export async function incrementBalance(userId, amount) {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      balance: {
-        increment: amount,
-      },
-    },
+  await User.findByIdAndUpdate(userId, {
+    $inc: { balance: amount },
   });
 }
 
@@ -77,13 +62,8 @@ export async function incrementBalance(userId, amount) {
  * @returns {Promise<void>}
  */
 export async function decrementBalance(userId, amount) {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      balance: {
-        decrement: amount,
-      },
-    },
+  await User.findByIdAndUpdate(userId, {
+    $inc: { balance: -amount },
   });
 }
 
@@ -96,47 +76,46 @@ export async function decrementBalance(userId, amount) {
  * @returns {Promise<Object>} Withdrawal record
  */
 export async function createWithdrawal(userId, amount, currency = 'NGN', bankDetails) {
-  return await prisma.$transaction(async (tx) => {
-    // Validate user exists and has KYC
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-    });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
+  try {
+    const user = await User.findById(userId).session(session);
     if (!user) {
       throw new Error('User not found');
     }
 
-    // KYC verification check (can be bypassed in development for testing)
     if (!user.kycVerified && process.env.NODE_ENV === 'production') {
       throw new Error('KYC verification required for withdrawals');
     }
-    
-    // In development, log a warning but allow withdrawal
+
     if (!user.kycVerified && process.env.NODE_ENV !== 'production') {
       console.warn(`[WITHDRAWAL] User ${userId} attempting withdrawal without KYC verification (allowed in development)`);
     }
 
-    // Check balance (use stored balance)
     const balance = Number(user.balance || 0);
     if (balance < amount) {
       throw new Error('Insufficient balance');
     }
 
-    // Create withdrawal record (balance not reduced yet - still PENDING)
-    const withdrawal = await tx.withdrawal.create({
-      data: {
-        userId,
-        amount,
-        currency,
-        bankName: bankDetails.bankName || user.bankName,
-        bankAccount: bankDetails.bankAccount || user.bankAccount,
-        accountName: bankDetails.accountName || `${user.firstName} ${user.lastName}`,
-        status: 'PENDING',
-      },
-    });
+    const withdrawal = await Withdrawal.create([{
+      userId,
+      amount,
+      currency,
+      bankName: bankDetails.bankName || user.bankName,
+      bankAccount: bankDetails.bankAccount || user.bankAccount,
+      accountName: bankDetails.accountName || `${user.firstName} ${user.lastName}`,
+      status: 'PENDING',
+    }], { session });
 
-    return withdrawal;
-  });
+    await session.commitTransaction();
+    return withdrawal[0];
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 }
 
 /**
@@ -146,13 +125,11 @@ export async function createWithdrawal(userId, amount, currency = 'NGN', bankDet
  * @returns {Promise<Object>} Updated withdrawal with payment details
  */
 export async function processWithdrawal(withdrawalId, paymentReference = null) {
-  return await prisma.$transaction(async (tx) => {
-    // Get withdrawal details
-    const withdrawal = await tx.withdrawal.findUnique({
-      where: { id: withdrawalId },
-      include: { user: true },
-    });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
+  try {
+    const withdrawal = await Withdrawal.findById(withdrawalId).populate('userId').session(session);
     if (!withdrawal) {
       throw new Error('Withdrawal not found');
     }
@@ -205,72 +182,60 @@ export async function processWithdrawal(withdrawalId, paymentReference = null) {
         reference: txReference,
       });
 
-      // Update withdrawal with payment reference and status
       const newStatus = transferResult.status === 'SUCCESS' ? 'PAID' : 'APPROVED';
-      const updatedWithdrawal = await tx.withdrawal.update({
-    where: { id: withdrawalId },
-    data: {
+      const updatedWithdrawal = await Withdrawal.findByIdAndUpdate(
+        withdrawalId,
+        {
           status: newStatus,
           paymentReference: transferResult.transactionReference || txReference,
-      processedAt: new Date(),
-    },
-      });
+          processedAt: new Date(),
+        },
+        { new: true, session }
+      );
 
-      // Decrement user's balance (only if not already decremented)
-      // Check if this withdrawal was previously APPROVED/PAID
       if (withdrawal.status === 'PENDING') {
-        await tx.user.update({
-          where: { id: withdrawal.userId },
-          data: {
-            balance: {
-              decrement: Number(withdrawal.amount),
-            },
-          },
-        });
+        await User.findByIdAndUpdate(
+          withdrawal.userId,
+          { $inc: { balance: -Number(withdrawal.amount) } },
+          { session }
+        );
 
-        // Create Detty December earning: 10% of withdrawal amount
         const dettyDecemberAmount = Number(withdrawal.amount) * 0.1;
         if (dettyDecemberAmount > 0) {
-          await tx.earning.create({
-            data: {
-              userId: withdrawal.userId,
-              amount: dettyDecemberAmount,
-              type: 'DETTY_DECEMBER',
-              description: `Detty December bonus - 10% of withdrawal (₦${Number(withdrawal.amount).toLocaleString()})`,
-            },
-          });
+          await Earning.create([{
+            userId: withdrawal.userId,
+            amount: dettyDecemberAmount,
+            type: 'DETTY_DECEMBER',
+            description: `Detty December bonus - 10% of withdrawal (₦${Number(withdrawal.amount).toLocaleString()})`,
+          }], { session });
 
-          // Increment user's balance with Detty December bonus
-          await tx.user.update({
-            where: { id: withdrawal.userId },
-            data: {
-              balance: {
-                increment: dettyDecemberAmount,
-              },
-            },
-          });
-
-          console.log(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId} (10% of withdrawal ₦${Number(withdrawal.amount)})`);
+          await User.findByIdAndUpdate(
+            withdrawal.userId,
+            { $inc: { balance: dettyDecemberAmount } },
+            { session }
+          );
         }
       }
 
+      await session.commitTransaction();
       return {
-        ...updatedWithdrawal,
+        ...updatedWithdrawal.toObject(),
         transferResult,
       };
     } catch (error) {
-      // If transfer fails, mark as failed
-      // Balance should NOT be decremented (withdrawal failed)
-      await tx.withdrawal.update({
-        where: { id: withdrawalId },
-        data: {
+      await Withdrawal.findByIdAndUpdate(
+        withdrawalId,
+        {
           status: 'FAILED',
           rejectionReason: error.message,
         },
-      });
-
+        { session }
+      );
+      await session.abortTransaction();
       throw error;
     }
-  });
+  } finally {
+    session.endSession();
+  }
 }
 

@@ -1,8 +1,6 @@
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import { Withdrawal } from '../models/index.js';
 import { createWithdrawal, getUserBalance, processWithdrawal } from '../services/withdrawalService.js';
-
-const prisma = new PrismaClient();
 
 export const withdrawValidation = [
   body('amount')
@@ -41,7 +39,7 @@ export async function withdraw(req, res) {
     }
 
     const { amount, currency, ...bankDetails } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     console.log('Withdrawal request:', { userId, amount, currency, bankDetails });
 
@@ -59,43 +57,31 @@ export async function withdraw(req, res) {
         } catch (seerbitError) {
           // If Seerbit fails (credentials not set), just mark as APPROVED for testing
           console.warn(`[DEV MODE] Seerbit processing failed, marking as APPROVED for testing:`, seerbitError.message);
-          processedWithdrawal = await prisma.withdrawal.update({
-            where: { id: withdrawal.id },
-            data: {
+          const { User, Earning } = await import('../models/index.js');
+          processedWithdrawal = await Withdrawal.findByIdAndUpdate(
+            withdrawal._id,
+            {
               status: 'APPROVED',
               processedAt: new Date(),
             },
-          });
-          // Decrement balance
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              balance: {
-                decrement: parseFloat(amount),
-              },
-            },
+            { new: true }
+          );
+          
+          await User.findByIdAndUpdate(userId, {
+            $inc: { balance: -parseFloat(amount) },
           });
 
-          // Create Detty December earning: 10% of withdrawal amount
           const dettyDecemberAmount = parseFloat(amount) * 0.1;
           if (dettyDecemberAmount > 0) {
-            await prisma.earning.create({
-              data: {
-                userId: userId,
-                amount: dettyDecemberAmount,
-                type: 'DETTY_DECEMBER',
-                description: `Detty December bonus - 10% of withdrawal (₦${parseFloat(amount).toLocaleString()})`,
-              },
+            await Earning.create({
+              userId: userId,
+              amount: dettyDecemberAmount,
+              type: 'DETTY_DECEMBER',
+              description: `Detty December bonus - 10% of withdrawal (₦${parseFloat(amount).toLocaleString()})`,
             });
 
-            // Increment user's balance with Detty December bonus
-            await prisma.user.update({
-              where: { id: userId },
-              data: {
-                balance: {
-                  increment: dettyDecemberAmount,
-                },
-              },
+            await User.findByIdAndUpdate(userId, {
+              $inc: { balance: dettyDecemberAmount },
             });
 
             console.log(`[DEV MODE] [DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${userId} (10% of withdrawal ₦${parseFloat(amount)})`);
@@ -127,7 +113,7 @@ export async function withdraw(req, res) {
 
 export async function getBalance(req, res) {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const balance = await getUserBalance(userId);
 
     res.json({
@@ -148,32 +134,16 @@ export async function getBalance(req, res) {
  */
 export async function getWithdrawals(req, res) {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const { limit = 50, offset = 0 } = req.query;
 
-    const withdrawals = await prisma.withdrawal.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: parseInt(limit),
-      skip: parseInt(offset),
-      select: {
-        id: true,
-        amount: true,
-        currency: true,
-        bankName: true,
-        bankAccount: true,
-        accountName: true,
-        status: true,
-        paymentReference: true,
-        rejectionReason: true,
-        processedAt: true,
-        createdAt: true,
-      },
-    });
+    const withdrawals = await Withdrawal.find({ userId })
+      .select('_id amount currency bankName bankAccount accountName status paymentReference rejectionReason processedAt createdAt')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
 
-    const total = await prisma.withdrawal.count({
-      where: { userId },
-    });
+    const total = await Withdrawal.countDocuments({ userId });
 
     res.json({
       success: true,

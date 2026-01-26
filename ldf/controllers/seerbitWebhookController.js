@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { Withdrawal, User } from '../models/index.js';
 import { verifyWebhookSignature } from '../services/seerbitService.js';
 import { logger } from '../utils/logger.js';
-
-const prisma = new PrismaClient();
+import mongoose from 'mongoose';
 
 /**
  * Handle Seerbit webhook for withdrawal status updates
@@ -42,13 +41,9 @@ export async function handleSeerbitWebhook(req, res) {
       });
     }
 
-    // Find withdrawal by payment reference
-    const withdrawal = await prisma.withdrawal.findFirst({
-      where: {
-        paymentReference: transactionReference,
-      },
-      include: { user: true },
-    });
+    const withdrawal = await Withdrawal.findOne({
+      paymentReference: transactionReference,
+    }).populate('userId');
 
     if (!withdrawal) {
       logger.warn(`Withdrawal not found for reference: ${transactionReference}`);
@@ -75,29 +70,26 @@ export async function handleSeerbitWebhook(req, res) {
     const oldStatus = withdrawal.status;
     const withdrawalAmount = Number(withdrawal.amount);
 
-    // Update withdrawal and balance in a transaction
-    await prisma.$transaction(async (tx) => {
-      // Update withdrawal
-      await tx.withdrawal.update({
-        where: { id: withdrawal.id },
-        data: {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      await Withdrawal.findByIdAndUpdate(
+        withdrawal._id,
+        {
           status: newStatus,
           rejectionReason,
           processedAt: newStatus === 'PAID' ? new Date() : withdrawal.processedAt,
         },
-      });
+        { session }
+      );
 
-      // Update balance based on status transitions
       if (oldStatus === 'PENDING' && (newStatus === 'APPROVED' || newStatus === 'PAID')) {
-        // PENDING → APPROVED/PAID: Decrement balance
-        await tx.user.update({
-          where: { id: withdrawal.userId },
-          data: {
-            balance: {
-              decrement: withdrawalAmount,
-            },
-          },
-        });
+        await User.findByIdAndUpdate(
+          withdrawal.userId,
+          { $inc: { balance: -withdrawalAmount } },
+          { session }
+        );
         logger.info(`Balance decremented by ₦${withdrawalAmount} for user ${withdrawal.userId}`);
 
         // Create Detty December earning: 10% of withdrawal amount
@@ -125,26 +117,46 @@ export async function handleSeerbitWebhook(req, res) {
           logger.info(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId} (10% of withdrawal ₦${withdrawalAmount})`);
         }
       } else if ((oldStatus === 'APPROVED' || oldStatus === 'PAID') && newStatus === 'FAILED') {
-        // APPROVED/PAID → FAILED: Increment balance back (refund)
-        await tx.user.update({
-          where: { id: withdrawal.userId },
-          data: {
-            balance: {
-              increment: withdrawalAmount,
-            },
-          },
-        });
+        await User.findByIdAndUpdate(
+          withdrawal.userId,
+          { $inc: { balance: withdrawalAmount } },
+          { session }
+        );
         logger.info(`Balance incremented back by ₦${withdrawalAmount} for user ${withdrawal.userId} (withdrawal failed)`);
       }
-      // If status doesn't change or transitions don't affect balance, no update needed
-    });
 
-    logger.info(`Withdrawal ${withdrawal.id} updated to ${newStatus} via Seerbit webhook`);
+      const dettyDecemberAmount = withdrawalAmount * 0.1;
+      if (newStatus === 'PAID' && dettyDecemberAmount > 0) {
+        const { Earning } = await import('../models/index.js');
+        await Earning.create([{
+          userId: withdrawal.userId,
+          amount: dettyDecemberAmount,
+          type: 'DETTY_DECEMBER',
+          description: `Detty December bonus - 10% of withdrawal (₦${withdrawalAmount.toLocaleString()})`,
+        }], { session });
+
+        await User.findByIdAndUpdate(
+          withdrawal.userId,
+          { $inc: { balance: dettyDecemberAmount } },
+          { session }
+        );
+        logger.info(`[DETTY_DECEMBER] Created ₦${dettyDecemberAmount} bonus for user ${withdrawal.userId}`);
+      }
+
+      await session.commitTransaction();
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+
+    logger.info(`Withdrawal ${withdrawal._id} updated to ${newStatus} via Seerbit webhook`);
 
     return res.json({
       success: true,
       message: 'Webhook processed successfully',
-      withdrawalId: withdrawal.id,
+      withdrawalId: withdrawal._id.toString(),
       status: newStatus,
     });
   } catch (error) {

@@ -1,15 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { connect, disconnect } from '../utils/db.js';
 import { recalculateBalance } from '../services/withdrawalService.js';
-
-const prisma = new PrismaClient();
+import { User } from '../models/index.js';
 
 async function initializeAllBalances() {
-  console.log('🔄 Initializing balances for all users...');
-
   try {
-    const users = await prisma.user.findMany({
-      select: { id: true, email: true, username: true },
-    });
+    await connect();
+    const users = await User.find({}).select('_id email username');
 
     console.log(`Found ${users.length} users to process`);
 
@@ -18,26 +14,22 @@ async function initializeAllBalances() {
 
     for (const user of users) {
       try {
-        const balance = await recalculateBalance(user.id);
-        console.log(`✅ User ${user.username} (${user.email}): ₦${balance.toLocaleString()}`);
+        const balance = await recalculateBalance(user._id.toString());
+        console.log(`User ${user.username} (${user.email}): ₦${balance.toLocaleString()}`);
         successCount++;
       } catch (error) {
-        console.error(`❌ Error calculating balance for user ${user.id}:`, error.message);
+        console.error(`Error calculating balance for user ${user._id}:`, error.message);
         errorCount++;
       }
     }
 
-    console.log(`\n✅ Completed!`);
-    console.log(`   Success: ${successCount}`);
-    console.log(`   Errors: ${errorCount}`);
+    console.log(`Completed! Success: ${successCount}, Errors: ${errorCount}`);
   } catch (error) {
     console.error('Fatal error:', error);
     process.exit(1);
   } finally {
-    await prisma.$disconnect();
+    await disconnect();
   }
 }
 
-// Run the script
 initializeAllBalances();
-

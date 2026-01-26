@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { User, Investment, Earning } from '../models/index.js';
 import bcrypt from 'bcryptjs';
 import { getUserBalance } from '../services/withdrawalService.js';
 import { getUplineHierarchy } from '../utils/matrixService.js';
-
-const prisma = new PrismaClient();
+import mongoose from 'mongoose';
 
 /**
  * Get user profile with bank details
@@ -12,25 +11,9 @@ export async function getProfile(req, res) {
   try {
     const userId = req.user.id;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        username: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        bankName: true,
-        bankAccount: true,
-        emailVerified: true,
-        isAgent: true,
-        isPremium: true,
-        kycVerified: true,
-        agentCouponCredits: true,
-        createdAt: true,
-      },
-    });
+    const user = await User.findById(userId).select(
+      'username firstName lastName email phone bankName bankAccount emailVerified isAgent isPremium kycVerified agentCouponCredits createdAt'
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -96,62 +79,42 @@ export async function getStats(req, res) {
 
     try {
       // Get total earnings (sum of all earnings)
-      const earningsResult = await prisma.earning.aggregate({
-        where: { userId },
-        _sum: { amount: true },
-      });
+      const earningsResult = await Earning.aggregate([
+        {
+          $match: { userId: new mongoose.Types.ObjectId(userId) }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
 
-      // Convert Decimal to number properly
-      const totalEarningsAmount = earningsResult._sum.amount;
-      totalEarnings = typeof totalEarningsAmount === 'object' && totalEarningsAmount !== null
-        ? parseFloat(totalEarningsAmount.toString())
-        : parseFloat(totalEarningsAmount) || 0;
+      totalEarnings = earningsResult[0]?.total || 0;
 
       // Get earnings breakdown by type
-      allEarnings = await prisma.earning.findMany({
-        where: { userId },
-        select: { amount: true, type: true },
-      });
+      allEarnings = await Earning.find({ userId }).select('amount type');
 
       // Calculate affiliate earnings (REFERRAL_BONUS)
       affiliateEarnings = allEarnings
         .filter(e => e.type === 'REFERRAL_BONUS')
-        .reduce((sum, e) => {
-          const amount = typeof e.amount === 'object' && e.amount !== null 
-            ? parseFloat(e.amount.toString()) 
-            : parseFloat(e.amount) || 0;
-          return sum + amount;
-        }, 0);
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
       // Calculate matrix earnings (MATRIX_LEVEL_*)
       matrixEarnings = allEarnings
         .filter(e => e.type.startsWith('MATRIX_LEVEL_'))
-        .reduce((sum, e) => {
-          const amount = typeof e.amount === 'object' && e.amount !== null 
-            ? parseFloat(e.amount.toString()) 
-            : parseFloat(e.amount) || 0;
-          return sum + amount;
-        }, 0);
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
       // Calculate Global Pool earnings (GLOBAL_POOL_ROI)
       globalPoolEarnings = allEarnings
         .filter(e => e.type === 'GLOBAL_POOL_ROI')
-        .reduce((sum, e) => {
-          const amount = typeof e.amount === 'object' && e.amount !== null 
-            ? parseFloat(e.amount.toString()) 
-            : parseFloat(e.amount) || 0;
-          return sum + amount;
-        }, 0);
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
       // Calculate Detty December earnings (DETTY_DECEMBER)
       dettyDecEarnings = allEarnings
         .filter(e => e.type === 'DETTY_DECEMBER')
-        .reduce((sum, e) => {
-          const amount = typeof e.amount === 'object' && e.amount !== null 
-            ? parseFloat(e.amount.toString()) 
-            : parseFloat(e.amount) || 0;
-          return sum + amount;
-        }, 0);
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     } catch (earningsError) {
       console.error('Error calculating earnings:', earningsError);
       // Continue with defaults (0)
@@ -166,21 +129,17 @@ export async function getStats(req, res) {
     }
 
     // Get direct referrals count (users who have this user as sponsor)
-    const directReferrals = await prisma.user.count({
-      where: { sponsorId: userId },
-    });
+    const directReferrals = await User.countDocuments({ sponsorId: userId });
 
     // Get team size (all users in the downline matrix)
     // This includes direct referrals and their referrals recursively
     const teamSize = await getTeamSize(userId);
 
     // Get premium slots count (completed PREMIUM investments)
-    const premiumSlots = await prisma.investment.count({
-      where: {
-        userId,
-        tier: 'PREMIUM',
-        status: 'completed',
-      },
+    const premiumSlots = await Investment.countDocuments({
+      userId,
+      tier: 'PREMIUM',
+      status: 'completed',
     });
 
     // Calculate spillover (team size - direct referrals)
@@ -191,33 +150,39 @@ export async function getStats(req, res) {
     let globalPoolStatus = 'Ineligible';
     try {
       // Get user's AFFILIATE INCOME (REFERRAL_BONUS)
-      const affiliateEarnings = await prisma.earning.aggregate({
-        where: {
-          userId,
-          type: 'REFERRAL_BONUS',
+      const affiliateEarningsResult = await Earning.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            type: 'REFERRAL_BONUS'
+          }
         },
-        _sum: {
-          amount: true,
-        },
-      });
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
 
       // Get user's GLOBAL_POOL_ROI earnings
-      const globalPoolEarnings = await prisma.earning.aggregate({
-        where: {
-          userId,
-          type: 'GLOBAL_POOL_ROI',
+      const globalPoolEarningsResult = await Earning.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            type: 'GLOBAL_POOL_ROI'
+          }
         },
-        _sum: {
-          amount: true,
-        },
-      });
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
 
-      const affiliateTotal = affiliateEarnings._sum.amount 
-        ? parseFloat(affiliateEarnings._sum.amount.toString()) 
-        : 0;
-      const globalPoolTotal = globalPoolEarnings._sum.amount 
-        ? parseFloat(globalPoolEarnings._sum.amount.toString()) 
-        : 0;
+      const affiliateTotal = affiliateEarningsResult[0]?.total || 0;
+      const globalPoolTotal = globalPoolEarningsResult[0]?.total || 0;
 
       const combinedTotal = affiliateTotal + globalPoolTotal;
       
@@ -244,10 +209,7 @@ export async function getStats(req, res) {
     // Get user to check premium status and subscription
     let subDaysDisplay = '30/30';
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isPremium: true, createdAt: true },
-      });
+      const user = await User.findById(userId).select('isPremium createdAt');
 
       if (user && user.createdAt) {
         // Calculate subscription days (30 days from creation, or custom logic)
@@ -323,10 +285,7 @@ export async function getStats(req, res) {
  */
 async function getTeamSize(userId) {
   // Get all direct referrals
-  const directReferrals = await prisma.user.findMany({
-    where: { sponsorId: userId },
-    select: { id: true },
-  });
+  const directReferrals = await User.find({ sponsorId: userId }).select('_id');
 
   if (directReferrals.length === 0) {
     return 0;
@@ -337,7 +296,8 @@ async function getTeamSize(userId) {
 
   // Recursively count referrals of each direct referral
   for (const referral of directReferrals) {
-    count += await getTeamSize(referral.id);
+    const referralId = referral._id || referral.id;
+    count += await getTeamSize(referralId);
   }
 
   return count;
@@ -377,11 +337,9 @@ export async function updateProfile(req, res) {
 
     // Check if email is already taken by another user
     if (email) {
-      const existingUser = await prisma.user.findFirst({
-        where: {
-          email: email.trim(),
-          NOT: { id: userId },
-        },
+      const existingUser = await User.findOne({
+        email: email.trim(),
+        _id: { $ne: userId },
       });
 
       if (existingUser) {
@@ -394,11 +352,9 @@ export async function updateProfile(req, res) {
 
     // Check if phone is already taken by another user
     if (phone) {
-      const existingUser = await prisma.user.findFirst({
-        where: {
-          phone: phone.trim(),
-          NOT: { id: userId },
-        },
+      const existingUser = await User.findOne({
+        phone: phone.trim(),
+        _id: { $ne: userId },
       });
 
       if (existingUser) {
@@ -410,31 +366,18 @@ export async function updateProfile(req, res) {
     }
 
     // Update user profile
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        ...(email && { email: email.trim() }),
-        ...(phone && { phone: phone.trim() }),
-      },
-      select: {
-        id: true,
-        username: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        bankName: true,
-        bankAccount: true,
-        emailVerified: true,
-        isAgent: true,
-        isPremium: true,
-        kycVerified: true,
-        agentCouponCredits: true,
-        createdAt: true,
-      },
-    });
+    const updateData = {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+    };
+    if (email) updateData.email = email.trim();
+    if (phone) updateData.phone = phone.trim();
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true }
+    ).select('username firstName lastName email phone bankName bankAccount emailVerified isAgent isPremium kycVerified agentCouponCredits createdAt');
 
     // Format bank details
     const bankDetails = {
@@ -499,22 +442,16 @@ export async function updateBankDetails(req, res) {
     }
 
     // Update user bank details
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
         bankName: bankName.trim(),
         bankAccount: accountNumber.trim(),
         // Note: accountName is typically derived from firstName + lastName
         // If you want to store it separately, you'd need to add an accountName field to the schema
       },
-      select: {
-        id: true,
-        bankName: true,
-        bankAccount: true,
-        firstName: true,
-        lastName: true,
-      },
-    });
+      { new: true }
+    ).select('bankName bankAccount firstName lastName');
 
     res.json({
       success: true,
@@ -568,10 +505,7 @@ export async function changePassword(req, res) {
     }
 
     // Get user with password hash
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, passwordHash: true },
-    });
+    const user = await User.findById(userId).select('passwordHash');
 
     if (!user) {
       return res.status(404).json({
@@ -595,11 +529,8 @@ export async function changePassword(req, res) {
     const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
 
     // Update password
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash: newPasswordHash,
-      },
+    await User.findByIdAndUpdate(userId, {
+      passwordHash: newPasswordHash,
     });
 
     res.json({
