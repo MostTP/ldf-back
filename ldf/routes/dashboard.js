@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { getProfile, getStats, updateProfile, updateBankDetails, changePassword } from '../controllers/dashboardController.js';
+import { getProfile, getStats, updateProfile, updateBankDetails, changePassword, getEarningsHistory } from '../controllers/dashboardController.js';
 import { getMatrixTree } from '../controllers/matrixController.js';
 
 const router = express.Router();
@@ -25,6 +25,9 @@ router.put('/bank', updateBankDetails);
 
 // Change password
 router.put('/password', changePassword);
+
+// Get earnings history
+router.get('/earnings/history', getEarningsHistory);
 
 export default router;
 

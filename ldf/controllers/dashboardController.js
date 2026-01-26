@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { getUserBalance } from '../services/withdrawalService.js';
 import { getUplineHierarchy } from '../utils/matrixService.js';
 import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
 
 /**
  * Get user profile with bank details
@@ -524,6 +525,58 @@ export async function changePassword(req, res) {
     res.status(500).json({
       success: false,
       message: 'Failed to change password',
+    });
+  }
+}
+
+/**
+ * Get earnings history for the authenticated user
+ */
+export async function getEarningsHistory(req, res) {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { limit = 50, offset = 0, type } = req.query;
+
+    const query = { userId };
+    
+    if (type) {
+      query.type = type;
+    }
+
+    const earnings = await Earning.find(query)
+      .select('_id amount type description createdAt')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    const total = await Earning.countDocuments(query);
+
+    // Get summary by type
+    const summaryByType = await Earning.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$type',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+      { $sort: { totalAmount: -1 } },
+    ]);
+
+    res.json({
+      success: true,
+      data: earnings,
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      summary: summaryByType,
+    });
+  } catch (error) {
+    logger.error('Get earnings history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get earnings history',
     });
   }
 }
