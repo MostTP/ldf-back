@@ -2,12 +2,11 @@ import express from 'express'; import { body, validationResult } from 'express-v
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { User } from '../models/index.js';
 import { logger } from '../utils/logger.js';
 import { activateUser } from '../services/activationService.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Validation rules
 const registerValidation = [
@@ -100,14 +99,11 @@ router.post('/login', loginValidation, async (req, res) => {
 
     const { identifier, password } = req.body;
 
-    // Find user by email or username
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: identifier },
-          { username: identifier },
-        ],
-      },
+    const user = await User.findOne({
+      $or: [
+        { email: identifier },
+        { username: identifier },
+      ],
     });
 
     if (!user) {
@@ -127,9 +123,8 @@ router.post('/login', loginValidation, async (req, res) => {
       });
     }
 
-    // Return user data (excluding sensitive information)
     const userData = {
-      id: user.id,
+      id: user._id.toString(),
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
@@ -139,7 +134,6 @@ router.post('/login', loginValidation, async (req, res) => {
       createdAt: user.createdAt,
     };
 
-    // Generate JWT token
     const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
     if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
       return res.status(500).json({
@@ -148,7 +142,7 @@ router.post('/login', loginValidation, async (req, res) => {
       });
     }
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user._id.toString(), email: user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -163,8 +157,7 @@ router.post('/login', loginValidation, async (req, res) => {
     logger.error('Login error:', error);
     logger.error('Login error stack:', error.stack);
     
-    // Check for specific error types
-    if (error.code === 'P1001' || error.message?.includes('Can\'t reach database')) {
+    if (error.message?.includes('connection')) {
       logger.error('Database connection error');
       return res.status(500).json({
         success: false,
@@ -210,15 +203,12 @@ router.post('/register', registerValidation, async (req, res) => {
       couponAcknowledged,
     } = req.body;
 
-    // Check if user already exists (email, username, or phone)
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email },
-          { username },
-          { phone },
-        ],
-      },
+    const existingUser = await User.findOne({
+      $or: [
+        { email },
+        { username },
+        { phone },
+      ],
     });
 
     if (existingUser) {
@@ -235,17 +225,10 @@ router.post('/register', registerValidation, async (req, res) => {
     let resolvedSponsorId = sponsorId || null;
     
     if (sponsor && !resolvedSponsorId) {
-      // Try to find sponsor by username (most common case)
-      const sponsorUser = await prisma.user.findUnique({
-        where: { username: sponsor.trim() },
-        select: { id: true },
-      });
-
+      const sponsorUser = await User.findOne({ username: sponsor.trim() }).select('_id');
       if (sponsorUser) {
-        resolvedSponsorId = sponsorUser.id;
+        resolvedSponsorId = sponsorUser._id;
       } else {
-        // If not found by username, could be a referral code or invalid
-        // For now, we'll log a warning but allow registration to proceed
         logger.warn(`Sponsor not found: ${sponsor}. User will be registered without sponsor.`);
       }
     }
@@ -258,34 +241,22 @@ router.post('/register', registerValidation, async (req, res) => {
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     const emailVerificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        phone,
-        username,
-        bankName,
-        bankAccount,
-        sponsorId: resolvedSponsorId,
-        couponCode,
-        passwordHash,
-        termsAccepted: termsAccepted === 'true' || termsAccepted === true,
-        riskDisclosureAccepted: riskDisclosureAccepted === 'true' || riskDisclosureAccepted === true,
-        couponAcknowledged: couponAcknowledged === 'true' || couponAcknowledged === true,
-        emailVerificationToken,
-        emailVerificationTokenExpiry,
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        username: true,
-        emailVerified: true,
-        createdAt: true,
-      },
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      phone,
+      username,
+      bankName,
+      bankAccount,
+      sponsorId: resolvedSponsorId,
+      couponCode,
+      passwordHash,
+      termsAccepted: termsAccepted === 'true' || termsAccepted === true,
+      riskDisclosureAccepted: riskDisclosureAccepted === 'true' || riskDisclosureAccepted === true,
+      couponAcknowledged: couponAcknowledged === 'true' || couponAcknowledged === true,
+      emailVerificationToken,
+      emailVerificationTokenExpiry,
     });
 
     // Automatically activate user if coupon code is provided
@@ -294,9 +265,9 @@ router.post('/register', registerValidation, async (req, res) => {
 
     if (couponCode && couponCode.trim()) {
       try {
-        logger.info(`[REGISTRATION] Auto-activating user ${user.id} with coupon ${couponCode}`);
-        activationResult = await activateUser(user.id, couponCode.trim());
-        logger.info(`[REGISTRATION] Auto-activation successful for user ${user.id}`);
+        logger.info(`[REGISTRATION] Auto-activating user ${user._id} with coupon ${couponCode}`);
+        activationResult = await activateUser(user._id.toString(), couponCode.trim());
+        logger.info(`[REGISTRATION] Auto-activation successful for user ${user._id}`);
       } catch (error) {
         // Log error but don't fail registration - user can activate manually later
         activationError = error.message;
@@ -329,9 +300,8 @@ router.post('/register', registerValidation, async (req, res) => {
   } catch (error) {
     logger.error('Registration error:', error);
     
-    // Handle Prisma unique constraint errors
-    if (error.code === 'P2002') {
-      const field = error.meta?.target?.[0] || 'field';
+    if (error.code === 11000 || error.message?.includes('duplicate key')) {
+      const field = Object.keys(error.keyPattern || {})[0] || 'field';
       return res.status(409).json({
         success: false,
         message: `User with this ${field} already exists`,
@@ -367,14 +337,9 @@ router.post('/verify-email', verifyEmailValidation, async (req, res) => {
 
     const { token } = req.body;
 
-    // Find user with valid token
-    const user = await prisma.user.findFirst({
-      where: {
-        emailVerificationToken: token,
-        emailVerificationTokenExpiry: {
-          gt: new Date(),
-        },
-      },
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationTokenExpiry: { $gt: new Date() },
     });
 
     if (!user) {
@@ -392,14 +357,10 @@ router.post('/verify-email', verifyEmailValidation, async (req, res) => {
       });
     }
 
-    // Update user to verified
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerified: true,
-        emailVerificationToken: null,
-        emailVerificationTokenExpiry: null,
-      },
+    await User.findByIdAndUpdate(user._id, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationTokenExpiry: null,
     });
 
     res.json({
@@ -438,10 +399,7 @@ router.post('/resend-verification', resendVerificationValidation, async (req, re
 
     const { email } = req.body;
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await User.findOne({ email });
 
     if (!user) {
       // Don't reveal if email exists for security
@@ -463,13 +421,9 @@ router.post('/resend-verification', resendVerificationValidation, async (req, re
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     const emailVerificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Update user with new token
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerificationToken,
-        emailVerificationTokenExpiry,
-      },
+    await User.findByIdAndUpdate(user._id, {
+      emailVerificationToken,
+      emailVerificationTokenExpiry,
     });
 
     // TODO: Send verification email with token

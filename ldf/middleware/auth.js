@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { User } from '../models/index.js';
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger.js';
-
-const prisma = new PrismaClient();
 
 /**
  * JWT authentication middleware
@@ -31,9 +29,7 @@ export async function authenticate(req, res, next) {
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-      });
+      const user = await User.findById(decoded.userId);
 
       if (!user) {
         return res.status(401).json({
