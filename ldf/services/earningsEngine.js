@@ -25,17 +25,17 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   // Referral Bonus
   if (user.sponsorId) {
     const sponsor = await User.findById(user.sponsorId).select('firstName lastName username').session(session);
-    logger.info(`[EARNINGS FLOW] Creating REFERRAL_BONUS: ₦1,000 for sponsor ${sponsor?.username || user.sponsorId}`);
+    logger.info(`[EARNINGS FLOW] Creating REFERRAL_BONUS: ₦2,500 for sponsor ${sponsor?.username || user.sponsorId}`);
     
     const referralEarning = await Earning.create([{
       userId: user.sponsorId,
-      amount: 1000,
+      amount: 2500,
       type: 'REFERRAL_BONUS',
       description: `Referral bonus for ${user.firstName} ${user.lastName}`,
     }], { session });
     
     await User.findByIdAndUpdate(user.sponsorId, {
-      $inc: { balance: 1000 },
+      $inc: { balance: 2500 },
     }, { session });
     
     logger.info(`[EARNINGS FLOW] ✓ REFERRAL_BONUS created: Earning ID ${referralEarning[0]._id}, User balance updated`);
@@ -67,7 +67,8 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   payouts.push(opsEarning[0]);
 
   // Matrix Level Bonuses
-  const matrixAmounts = [200, 100, 70, 60, 70];
+  // Level 1-5 amounts (per downline/spillover): 100, 70, 60, 70, 200
+  const matrixAmounts = [100, 70, 60, 70, 200];
   
   if (user.sponsorId) {
     logger.info(`[EARNINGS FLOW] Processing matrix level bonuses`);

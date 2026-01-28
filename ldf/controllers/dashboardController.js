@@ -144,6 +144,22 @@ export async function getStats(req, res) {
     // Calculate spillover (team size - direct referrals)
     const spillover = Math.max(0, teamSize - directReferrals);
 
+    // Matrix slots configuration (per level) based on total team size
+    // Capacities per level: 5, 25, 125, 625, 3125
+    const matrixCapacities = [5, 25, 125, 625, 3125];
+    let remainingDownline = Number(teamSize) || 0;
+
+    const matrixSlots = matrixCapacities.map((capacity, index) => {
+      const filled = Math.min(Math.max(remainingDownline, 0), capacity);
+      remainingDownline = Math.max(remainingDownline - capacity, 0);
+
+      return {
+        level: index + 1,
+        maxSlots: capacity,
+        filledSlots: filled,
+      };
+    });
+
     // Determine global pool status
     // User is eligible if (AFFILIATE INCOME + GLOBAL_POOL_ROI) < ₦10,000
     let globalPoolStatus = 'Ineligible';
@@ -202,8 +218,9 @@ export async function getStats(req, res) {
     else if (directReferrals >= 4) matrixLevel = 'Level 3';
     else if (directReferrals >= 2) matrixLevel = 'Level 2';
 
-    // Calculate slots filled (direct referrals capped at 2 for level 1)
-    const slotsFilled = Math.min(directReferrals, 2);
+    // Calculate slots filled for matrix progression display
+    // Use total team size against Level 1 capacity (5 slots)
+    const slotsFilled = Math.min(teamSize, 5);
 
     // Get user to check premium status and subscription
     let subDaysDisplay = '30/30';
@@ -251,6 +268,9 @@ export async function getStats(req, res) {
       // Team metrics
       totalTeam: Number(teamSize) || 0,
       spillover: Number(spillover) || 0,
+      // Used by Matrix / progression views
+      totalActiveDownline: Number(teamSize) || 0,
+      matrixSlots,
       slotsFilled: Number(slotsFilled) || 0,
     };
 
