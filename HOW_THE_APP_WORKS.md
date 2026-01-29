@@ -78,7 +78,7 @@ Activation is when a new user pays **₦50** using a **coupon code** to join the
    
    ```
    ₦50 (activation fee) → Distributed as:
-   ├─ ₦1,000 → Direct Referrer (REFERRAL_BONUS)
+   ├─ ₦2,500 → Direct Referrer (REFERRAL_BONUS)
    ├─ ₦1,000 → Global Pool (GLOBAL_POOL_CONTRIBUTION)
    ├─ ₦500  → Operations Cost (OPERATIONS_COST)
    └─ ₦500  → Matrix Bonuses (5-level upline)
@@ -106,7 +106,7 @@ User A → User B → User C → User D → User E → User F
 ```
 
 When User A activates:
-- User B gets ₦1,000 (REFERRAL_BONUS)
+- User B gets ₦2,500 (REFERRAL_BONUS)
 - User C gets ₦200 (MATRIX_LEVEL_1)
 - User D gets ₦100 (MATRIX_LEVEL_2)
 - User E gets ₦70 (MATRIX_LEVEL_3)
@@ -121,18 +121,18 @@ When User A activates:
 
 The platform tracks multiple earning types:
 
-1. **REFERRAL_BONUS** (₦1,000)
+1. **REFERRAL_BONUS** (₦2,500)
    - Earned when your direct referral activates
    - One-time payment per activation
 
-2. **MATRIX_LEVEL_X** (₦200, ₦100, ₦70, ₦60, ₦70)
+2. **MATRIX_LEVEL_X** (₦100, ₦70, ₦60, ₦70, ₦200)
    - Earned from upline matrix bonuses
    - 5 levels of matrix earnings
 
 3. **GLOBAL_POOL_ROI**
    - Monthly distributions from Global Pool
-   - Only for eligible users (5+ direct referrals)
-   - Variable amount based on pool size
+   - Only for eligible users: (AFFILIATE INCOME + GLOBAL_POOL_ROI) < ₦10,000
+   - Credits exact amount needed to bring total to ₦10,000
 
 4. **PREMIUM_ROI**
    - Quarterly ROI from Capital Pool investments
@@ -173,13 +173,13 @@ Earnings are automatically added to balance when created.
 
 Matrix progression based on **direct referrals**:
 
-| Level | Direct Referrals Required | Max Slots | Bonus per Activation |
-|-------|---------------------------|-----------|---------------------|
-| Level 1 | 0-1 | 2 | ₦200 |
-| Level 2 | 2-3 | 4 | ₦100 |
-| Level 3 | 4-7 | 8 | ₦70 |
-| Level 4 | 8-15 | 16 | ₦60 |
-| Level 5 | 16+ | 32 | ₦70 |
+| Level | Direct Referrals Required | Max Slots (shown as current/total) | Bonus per Activation |
+|-------|---------------------------|------------------------------------|---------------------|
+| Level 1 | 0-1 | 0/5 slots | ₦100 |
+| Level 2 | 2-3 | 0/25 slots | ₦70 |
+| Level 3 | 4-7 | 0/125 slots | ₦60 |
+| Level 4 | 8-15 | 0/625 slots | ₦70 |
+| Level 5 | 16+ | 0/3125 slots | ₦200 |
 
 **Note**: Matrix bonuses are earned from **upline** (not your direct referrals). When someone in your upline's downline activates, you get a matrix bonus based on your level.
 
@@ -225,18 +225,20 @@ Dashboard shows:
 - Tracked as `GLOBAL_POOL_CONTRIBUTION`
 
 **Eligibility**:
-- Must have **5+ direct referrals**
 - Must have `emailVerified: true`
+- **Current Lifetime AFFILIATE INCOME + Current Lifetime GLOBAL_POOL_ROI must be < ₦10,000**
 
 **Distribution**:
 - **Monthly** via cron job
-- Available pool ÷ eligible users = ROI per user
+- Credits **exact amount** needed to bring user's total to ₦10,000
+- Formula: `Credit Amount = ₦10,000 - (AFFILIATE INCOME + GLOBAL_POOL_ROI)`
 - Distributed as `GLOBAL_POOL_ROI` earnings
+- Only distributes if pool has sufficient funds
 
 **Example**:
-- Pool has ₦100,000
-- 20 eligible users
-- Each gets ₦5,000 monthly
+- User has ₦3,000 AFFILIATE INCOME + ₦2,000 GLOBAL_POOL_ROI = ₦5,000 total
+- System credits exactly ₦5,000 to bring total to ₦10,000
+- User now has ₦10,000 total (₦3,000 AFFILIATE + ₦7,000 GLOBAL_POOL)
 
 ---
 
@@ -264,10 +266,12 @@ Available = Total Pool - Distributed
 ### Distribution Logic
 
 1. Get all users with `emailVerified: true`
-2. Filter to users with **5+ direct referrals**
-3. Calculate: `ROI per user = Available Pool ÷ Eligible Users`
-4. Create `GLOBAL_POOL_ROI` earning for each user
-5. Update user balances
+2. For each user, calculate: `AFFILIATE INCOME + GLOBAL_POOL_ROI`
+3. Filter to users where combined total **< ₦10,000**
+4. For each eligible user, calculate: `Credit Amount = ₦10,000 - Combined Total`
+5. Distribute credits (up to available pool funds) to bring each user to exactly ₦10,000
+6. Create `GLOBAL_POOL_ROI` earning for each user
+7. Update user balances
 
 ### Admin Controls
 
@@ -374,8 +378,8 @@ Agents can generate **coupon codes** that users redeem for activation.
 
 **What it does**:
 - Calculates available pool
-- Finds eligible users (5+ direct referrals)
-- Distributes pool equally among eligible users
+- Finds eligible users: (AFFILIATE INCOME + GLOBAL_POOL_ROI) < ₦10,000
+- Credits exact amount to bring each user to ₦10,000 (up to available pool)
 - Creates `GLOBAL_POOL_ROI` earnings
 
 ### 2. Premium ROI Distribution
@@ -481,7 +485,7 @@ else if (isPremium) → "Premium Active"
 4. **Earn Money**
    - Referral bonuses from direct referrals
    - Matrix bonuses from upline
-   - Global Pool ROI (if 5+ referrals)
+   - Global Pool ROI (if AFFILIATE + GLOBAL_POOL < ₦10k)
    - Premium ROI (if invested)
 
 5. **Withdraw**
@@ -539,7 +543,7 @@ else if (isPremium) → "Premium Active"
 1. **Activation Fee**: ₦50 per user activation
 2. **Payout Total**: ₦2,500 distributed per activation
 3. **Matrix Bonuses**: Go to upline, not direct referrals
-4. **Global Pool**: Requires 5+ direct referrals
+4. **Global Pool**: Credits exact amount to bring (AFFILIATE + GLOBAL_POOL) to ₦10,000
 5. **Premium ROI**: 10% quarterly on investments
 6. **Minimum Withdrawal**: ₦5,000
 7. **KYC Required**: For withdrawals in production
