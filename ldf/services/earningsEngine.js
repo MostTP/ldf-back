@@ -1,6 +1,6 @@
 import { User, Earning } from '../models/index.js';
-import { getUplineHierarchy } from '../utils/matrixService.js';
 import { logger } from '../utils/logger.js';
+import mongoose from 'mongoose';
 
 /**
  * Trigger activation payouts for a new user activation
@@ -66,36 +66,73 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   logger.info(`[EARNINGS FLOW] ✓ OPERATIONS_COST created: Earning ID ${opsEarning[0]._id}`);
   payouts.push(opsEarning[0]);
 
-  // Matrix Level Bonuses
-  // Level 1-5 amounts (per downline/spillover): 100, 70, 60, 70, 200
-  const matrixAmounts = [100, 70, 60, 70, 200];
+  // Matrix Level Bonuses - Based on direct referrals with spillover
+  // When you refer someone, you get matrix income immediately based on your referral count
+  // Level 1: First 5 direct referrals → ₦100 each
+  // Level 2: Next 25 (6th-30th) → ₦70 each
+  // Level 3: Next 125 (31st-155th) → ₦60 each
+  // Level 4: Next 625 (156th-780th) → ₦70 each
+  // Level 5: Next 3125 (781st-3905th) → ₦200 each
+  const matrixLevels = [
+    { start: 1, end: 5, amount: 100 },      // Level 1: positions 1-5
+    { start: 6, end: 30, amount: 70 },     // Level 2: positions 6-30
+    { start: 31, end: 155, amount: 60 },   // Level 3: positions 31-155
+    { start: 156, end: 780, amount: 70 },   // Level 4: positions 156-780
+    { start: 781, end: 3905, amount: 200 }, // Level 5: positions 781-3905
+  ];
   
   if (user.sponsorId) {
-    logger.info(`[EARNINGS FLOW] Processing matrix level bonuses`);
-    const upline = await getUplineHierarchy(user.sponsorId.toString(), session);
-    logger.info(`[EARNINGS FLOW] Found ${upline.length} upline members, processing up to 5 levels`);
+    logger.info(`[EARNINGS FLOW] Processing matrix level bonus for direct sponsor`);
     
-    for (let i = 0; i < Math.min(upline.length, 5); i++) {
-      const level = i + 1;
-      const sponsorId = upline[i];
-      const amount = matrixAmounts[i];
-      
-      const sponsor = await User.findById(sponsorId).select('username').session(session);
-      logger.info(`[EARNINGS FLOW] Creating MATRIX_LEVEL_${level}: ₦${amount} for ${sponsor?.username || sponsorId}`);
+    // Ensure newUserId is an ObjectId for proper comparison
+    const newUserObjectId = mongoose.Types.ObjectId.isValid(newUserId) 
+      ? new mongoose.Types.ObjectId(newUserId) 
+      : newUserId;
+    
+    // Count how many direct referrals the sponsor already has (excluding this new user)
+    const existingDirectReferrals = await User.countDocuments({ 
+      sponsorId: user.sponsorId,
+      _id: { $ne: newUserObjectId }
+    }).session(session);
+    
+    logger.info(`[EARNINGS FLOW] Sponsor ${user.sponsorId} has ${existingDirectReferrals} existing direct referrals (excluding new user ${newUserId})`);
+    
+    // This new referral will be at position (existingDirectReferrals + 1)
+    const referralPosition = existingDirectReferrals + 1;
+    
+    // Determine which matrix level this referral falls into
+    let matrixLevel = 0;
+    let matrixAmount = 0;
+    
+    for (let i = 0; i < matrixLevels.length; i++) {
+      if (referralPosition >= matrixLevels[i].start && referralPosition <= matrixLevels[i].end) {
+        matrixLevel = i + 1;
+        matrixAmount = matrixLevels[i].amount;
+        break;
+      }
+    }
+    
+    logger.info(`[EARNINGS FLOW] New referral position: ${referralPosition}, Matrix Level: ${matrixLevel}, Amount: ₦${matrixAmount}`);
+    
+    if (matrixLevel > 0 && matrixAmount > 0) {
+      const sponsor = await User.findById(user.sponsorId).select('username').session(session);
+      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || user.sponsorId} has ${existingDirectReferrals} existing referrals. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
 
       const matrixEarning = await Earning.create([{
-        userId: sponsorId,
-        amount: amount,
-        type: `MATRIX_LEVEL_${level}`,
-        description: `Matrix level ${level} bonus for ${user.firstName} ${user.lastName}`,
+        userId: user.sponsorId,
+        amount: matrixAmount,
+        type: `MATRIX_LEVEL_${matrixLevel}`,
+        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (referral #${referralPosition})`,
       }], { session });
       
-      await User.findByIdAndUpdate(sponsorId, {
-        $inc: { balance: amount },
+      await User.findByIdAndUpdate(user.sponsorId, {
+        $inc: { balance: matrixAmount },
       }, { session });
       
-      logger.info(`[EARNINGS FLOW] ✓ MATRIX_LEVEL_${level} created: Earning ID ${matrixEarning[0]._id}, User balance updated`);
+      logger.info(`[EARNINGS FLOW] ✓ MATRIX_LEVEL_${matrixLevel} created: Earning ID ${matrixEarning[0]._id}, Sponsor balance updated by ₦${matrixAmount}`);
       payouts.push(matrixEarning[0]);
+    } else {
+      logger.warn(`[EARNINGS FLOW] Referral position ${referralPosition} exceeds maximum matrix levels (3905) or invalid level, no matrix bonus paid`);
     }
   } else {
     logger.info(`[EARNINGS FLOW] No sponsor found, skipping matrix level bonuses`);
