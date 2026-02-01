@@ -141,18 +141,23 @@ export async function getStats(req, res) {
       status: 'completed',
     });
 
+    // Get matrix level counts (includes both direct referrals and spillovers)
+    const matrixLevelCounts = await getMatrixLevelCounts(userId, 5);
+    
+    // Calculate total users in matrix (direct referrals + spillovers)
+    const totalMatrixUsers = matrixLevelCounts.reduce((sum, count) => sum + count, 0);
+    
     // Calculate spillover: Direct referrals beyond Level 1 (beyond 5)
     // Spillover = direct referrals that overflow from Level 1 to Level 2+
     const spillover = Math.max(0, directReferrals - 5);
 
-    // Matrix slots configuration (per level) based on DIRECT REFERRALS (not total team size)
+    // Matrix slots configuration (per level) based on TOTAL MATRIX USERS (direct referrals + spillovers)
     // Capacities per level: 5, 25, 125, 625, 3125
     const matrixCapacities = [5, 25, 125, 625, 3125];
-    let remainingDirectReferrals = Number(directReferrals) || 0;
 
     const matrixSlots = matrixCapacities.map((capacity, index) => {
-      const filled = Math.min(Math.max(remainingDirectReferrals, 0), capacity);
-      remainingDirectReferrals = Math.max(remainingDirectReferrals - capacity, 0);
+      // Use actual count for each level from matrixLevelCounts
+      const filled = matrixLevelCounts[index] || 0;
 
       return {
         level: index + 1,
@@ -211,40 +216,40 @@ export async function getStats(req, res) {
       // Default to Ineligible on error
     }
 
-    // Calculate matrix level based on direct referrals
-    // Level 1: 0-5 referrals, Level 2: 6-30, Level 3: 31-155, Level 4: 156-780, Level 5: 781+
+    // Calculate matrix level based on total matrix users (direct referrals + spillovers)
+    // Level 1: 0-5 users, Level 2: 6-30, Level 3: 31-155, Level 4: 156-780, Level 5: 781+
     let matrixLevel = 'Level 1';
-    if (directReferrals >= 781) matrixLevel = 'Level 5';
-    else if (directReferrals >= 156) matrixLevel = 'Level 4';
-    else if (directReferrals >= 31) matrixLevel = 'Level 3';
-    else if (directReferrals >= 6) matrixLevel = 'Level 2';
+    if (totalMatrixUsers >= 781) matrixLevel = 'Level 5';
+    else if (totalMatrixUsers >= 156) matrixLevel = 'Level 4';
+    else if (totalMatrixUsers >= 31) matrixLevel = 'Level 3';
+    else if (totalMatrixUsers >= 6) matrixLevel = 'Level 2';
 
     // Calculate slots filled for current matrix level
-    // Shows how many direct referrals are in the current level
+    // Shows how many users (direct referrals + spillovers) are in the current level
     // Matrix level capacities: 5, 25, 125, 625, 3125
     const matrixLevelCapacities = [5, 25, 125, 625, 3125];
     let slotsFilled = 0;
     let maxSlots = 5; // Default to Level 1
     
-    if (directReferrals <= 5) {
+    if (totalMatrixUsers <= 5) {
       // Level 1: show actual count (0-5)
-      slotsFilled = directReferrals;
+      slotsFilled = totalMatrixUsers;
       maxSlots = matrixLevelCapacities[0]; // 5
-    } else if (directReferrals <= 30) {
+    } else if (totalMatrixUsers <= 30) {
       // Level 2: show count in Level 2 (6-30)
-      slotsFilled = directReferrals - 5;
+      slotsFilled = totalMatrixUsers - 5;
       maxSlots = matrixLevelCapacities[1]; // 25
-    } else if (directReferrals <= 155) {
+    } else if (totalMatrixUsers <= 155) {
       // Level 3: show count in Level 3 (31-155)
-      slotsFilled = directReferrals - 30;
+      slotsFilled = totalMatrixUsers - 30;
       maxSlots = matrixLevelCapacities[2]; // 125
-    } else if (directReferrals <= 780) {
+    } else if (totalMatrixUsers <= 780) {
       // Level 4: show count in Level 4 (156-780)
-      slotsFilled = directReferrals - 155;
+      slotsFilled = totalMatrixUsers - 155;
       maxSlots = matrixLevelCapacities[3]; // 625
     } else {
       // Level 5: show count in Level 5 (781+)
-      slotsFilled = directReferrals - 780;
+      slotsFilled = totalMatrixUsers - 780;
       maxSlots = matrixLevelCapacities[4]; // 3125
     }
 
@@ -333,6 +338,48 @@ async function getTeamSize(userId) {
   }
 
   return count;
+}
+
+/**
+ * Count users in each matrix level (includes both direct referrals and spillovers)
+ * @param {string} userId - The user ID to count matrix levels for
+ * @param {number} maxLevels - Maximum levels to count (default 5)
+ * @returns {Promise<number[]>} Array of counts for each level [level1, level2, level3, level4, level5]
+ */
+async function getMatrixLevelCounts(userId, maxLevels = 5) {
+  const levelCounts = new Array(maxLevels).fill(0);
+  
+  // Level 1: Direct referrals only
+  const level1Users = await User.find({ sponsorId: userId }).select('_id');
+  levelCounts[0] = level1Users.length;
+  
+  if (level1Users.length === 0) {
+    return levelCounts;
+  }
+
+  // For levels 2-5, count all users in that level's positions
+  // Level 2: All users who are direct referrals of Level 1 users
+  // Level 3: All users who are direct referrals of Level 2 users
+  // etc.
+  let currentLevelUsers = level1Users;
+  
+  for (let level = 1; level < maxLevels; level++) {
+    const currentLevelIds = currentLevelUsers.map(u => u._id);
+    
+    if (currentLevelIds.length === 0) {
+      break;
+    }
+    
+    // Get all direct referrals of users in current level
+    const nextLevelUsers = await User.find({ 
+      sponsorId: { $in: currentLevelIds } 
+    }).select('_id');
+    
+    levelCounts[level] = nextLevelUsers.length;
+    currentLevelUsers = nextLevelUsers;
+  }
+  
+  return levelCounts;
 }
 
 /**
