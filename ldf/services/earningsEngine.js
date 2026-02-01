@@ -3,6 +3,52 @@ import { logger } from '../utils/logger.js';
 import mongoose from 'mongoose';
 
 /**
+ * Count total matrix users (direct referrals + spillovers) for a user
+ * @param {string} userId - The user ID to count matrix users for
+ * @param {ObjectId} excludeUserId - User ID to exclude from count (the new user being added)
+ * @param {object} session - MongoDB session
+ * @returns {Promise<number>} Total count of matrix users (excluding the new user)
+ */
+async function getTotalMatrixUsers(userId, excludeUserId = null, session = null) {
+  const maxLevels = 5;
+  let totalCount = 0;
+  
+  // Level 1: Direct referrals only (exclude the new user if provided)
+  const level1Query = { sponsorId: userId };
+  if (excludeUserId) {
+    level1Query._id = { $ne: excludeUserId };
+  }
+  const level1Users = await User.find(level1Query).select('_id').session(session);
+  totalCount += level1Users.length;
+  
+  if (level1Users.length === 0) {
+    return totalCount;
+  }
+
+  // For levels 2-5, count all users in that level's positions (includes spillovers)
+  // Note: The new user is always a direct referral (Level 1), so we don't need to exclude them from deeper levels
+  let currentLevelUsers = level1Users;
+  
+  for (let level = 1; level < maxLevels; level++) {
+    const currentLevelIds = currentLevelUsers.map(u => u._id);
+    
+    if (currentLevelIds.length === 0) {
+      break;
+    }
+    
+    // Get all direct referrals of users in current level (this includes spillovers)
+    const nextLevelUsers = await User.find({ 
+      sponsorId: { $in: currentLevelIds } 
+    }).select('_id').session(session);
+    
+    totalCount += nextLevelUsers.length;
+    currentLevelUsers = nextLevelUsers;
+  }
+  
+  return totalCount;
+}
+
+/**
  * Trigger activation payouts for a new user activation
  * All payouts happen in a single transaction
  * @param {number} newUserId - The newly activated user ID
@@ -66,9 +112,9 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   logger.info(`[EARNINGS FLOW] ✓ OPERATIONS_COST created: Earning ID ${opsEarning[0]._id}`);
   payouts.push(opsEarning[0]);
 
-  // Matrix Level Bonuses - Based on direct referrals with spillover
-  // When you refer someone, you get matrix income immediately based on your referral count
-  // Level 1: First 5 direct referrals → ₦100 each
+  // Matrix Level Bonuses - Based on total matrix users (direct referrals + spillovers)
+  // When you refer someone, you get matrix income immediately based on your total matrix count
+  // Level 1: First 5 users (direct + spillover) → ₦100 each
   // Level 2: Next 25 (6th-30th) → ₦70 each
   // Level 3: Next 125 (31st-155th) → ₦60 each
   // Level 4: Next 625 (156th-780th) → ₦70 each
@@ -89,16 +135,13 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
       ? new mongoose.Types.ObjectId(newUserId) 
       : newUserId;
     
-    // Count how many direct referrals the sponsor already has (excluding this new user)
-    const existingDirectReferrals = await User.countDocuments({ 
-      sponsorId: user.sponsorId,
-      _id: { $ne: newUserObjectId }
-    }).session(session);
+    // Count total matrix users (direct referrals + spillovers) excluding this new user
+    const totalMatrixUsers = await getTotalMatrixUsers(user.sponsorId, newUserObjectId, session);
     
-    logger.info(`[EARNINGS FLOW] Sponsor ${user.sponsorId} has ${existingDirectReferrals} existing direct referrals (excluding new user ${newUserId})`);
+    logger.info(`[EARNINGS FLOW] Sponsor ${user.sponsorId} has ${totalMatrixUsers} total matrix users (direct + spillover, excluding new user ${newUserId})`);
     
-    // This new referral will be at position (existingDirectReferrals + 1)
-    const referralPosition = existingDirectReferrals + 1;
+    // This new referral will be at position (totalMatrixUsers + 1)
+    const referralPosition = totalMatrixUsers + 1;
     
     // Determine which matrix level this referral falls into
     let matrixLevel = 0;
@@ -116,13 +159,13 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
     
     if (matrixLevel > 0 && matrixAmount > 0) {
       const sponsor = await User.findById(user.sponsorId).select('username').session(session);
-      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || user.sponsorId} has ${existingDirectReferrals} existing referrals. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
+      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || user.sponsorId} has ${totalMatrixUsers} total matrix users. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
 
       const matrixEarning = await Earning.create([{
         userId: user.sponsorId,
         amount: matrixAmount,
         type: `MATRIX_LEVEL_${matrixLevel}`,
-        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (referral #${referralPosition})`,
+        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, includes spillovers)`,
       }], { session });
       
       await User.findByIdAndUpdate(user.sponsorId, {

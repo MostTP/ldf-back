@@ -15,12 +15,16 @@ export async function getMatrixTree(req, res) {
       });
     }
 
+    // Level 1: Direct referrals only
     const level1Users = await User.find({ sponsorId: userId })
       .select('_id username firstName lastName')
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .limit(5); // Limit to 5 for Level 1
 
     const level1Ids = level1Users.map((u) => u._id);
 
+    // Level 2: All users who are direct referrals of Level 1 users (includes spillovers)
+    // This gets all users in Level 2 positions, not just those directly referred by Level 1
     let level2Users = [];
     if (level1Ids.length > 0) {
       level2Users = await User.find({ sponsorId: { $in: level1Ids } })
@@ -28,6 +32,9 @@ export async function getMatrixTree(req, res) {
         .sort({ createdAt: 1 });
     }
 
+    // Group Level 2 users by their sponsor (Level 1 user)
+    // This shows which Level 1 user they're placed under
+    // Note: All Level 2 users shown here are placed under Level 1 users (includes both direct referrals and spillovers)
     const level2BySponsor = level2Users.reduce((acc, u) => {
       if (!u.sponsorId) return acc;
       const sponsorId = u.sponsorId.toString();
