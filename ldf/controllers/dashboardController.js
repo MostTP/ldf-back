@@ -300,7 +300,8 @@ export async function getStats(req, res) {
       totalTeam: Number(teamSize) || 0,
       spillover: Number(spillover) || 0,
       // Used by Matrix / progression views
-      totalActiveDownline: Number(teamSize) || 0,
+      // totalActiveDownline should be total matrix users (includes spillovers), not just recursive team size
+      totalActiveDownline: Number(totalMatrixUsers) || Number(teamSize) || 0,
       matrixSlots,
       slotsFilled: Number(slotsFilled) || 0,
       maxSlots: Number(maxSlots) || 5, // Max slots for current matrix level
