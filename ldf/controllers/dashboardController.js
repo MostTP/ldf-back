@@ -157,7 +157,8 @@ export async function getStats(req, res) {
 
     const matrixSlots = matrixCapacities.map((capacity, index) => {
       // Use actual count for each level from matrixLevelCounts
-      const filled = matrixLevelCounts[index] || 0;
+      // Ensure filled slots never exceed the max capacity for that level
+      const filled = Math.min(matrixLevelCounts[index] || 0, capacity);
 
       return {
         level: index + 1,

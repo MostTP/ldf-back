@@ -15,7 +15,7 @@ export async function getMatrixTree(req, res) {
       });
     }
 
-    // Level 1: Direct referrals only
+    // Level 1: First 5 direct referrals only
     const level1Users = await User.find({ sponsorId: userId })
       .select('_id username firstName lastName')
       .sort({ createdAt: 1 })
@@ -23,29 +23,55 @@ export async function getMatrixTree(req, res) {
 
     const level1Ids = level1Users.map((u) => u._id);
 
-    // Level 2: All users who are direct referrals of Level 1 users (includes spillovers)
-    // This gets all users in Level 2 positions, not just those directly referred by Level 1
-    let level2Users = [];
+    // Level 2 includes:
+    // 1. Users who are direct referrals of Level 1 users
+    // 2. Spillover direct referrals (6th+ direct referrals of the root user)
+    
+    // Get all direct referrals of Level 1 users
+    let level2FromLevel1 = [];
     if (level1Ids.length > 0) {
-      level2Users = await User.find({ sponsorId: { $in: level1Ids } })
+      level2FromLevel1 = await User.find({ sponsorId: { $in: level1Ids } })
         .select('_id username firstName lastName sponsorId')
         .sort({ createdAt: 1 });
     }
 
-    // Group Level 2 users by their sponsor (Level 1 user)
-    // This shows which Level 1 user they're placed under
-    // Note: All Level 2 users shown here are placed under Level 1 users (includes both direct referrals and spillovers)
-    const level2BySponsor = level2Users.reduce((acc, u) => {
-      if (!u.sponsorId) return acc;
+    // Get spillover direct referrals (6th+ direct referrals of root user)
+    // These are still direct referrals but placed in Level 2 positions
+    const allDirectReferrals = await User.find({ sponsorId: userId })
+      .select('_id username firstName lastName')
+      .sort({ createdAt: 1 });
+    
+    const spilloverUsers = allDirectReferrals.slice(5); // Skip first 5 (they're in Level 1)
+
+    // Combine Level 2 users: those referred by Level 1 + spillover direct referrals
+    // All spillover users are assigned to the first Level 1 user (first direct referral)
+    const level2BySponsor = {};
+    
+    // First, add users referred by Level 1 users
+    level2FromLevel1.forEach((u) => {
+      if (!u.sponsorId) return;
       const sponsorId = u.sponsorId.toString();
-      if (!acc[sponsorId]) acc[sponsorId] = [];
-      acc[sponsorId].push({
+      if (!level2BySponsor[sponsorId]) level2BySponsor[sponsorId] = [];
+      level2BySponsor[sponsorId].push({
         id: u._id.toString(),
         username: u.username,
         displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
       });
-      return acc;
-    }, {});
+    });
+
+    // Then, assign all spillover direct referrals to the first Level 1 user
+    if (spilloverUsers.length > 0 && level1Users.length > 0) {
+      const firstLevel1Id = level1Users[0]._id.toString();
+      
+      spilloverUsers.forEach((spilloverUser) => {
+        if (!level2BySponsor[firstLevel1Id]) level2BySponsor[firstLevel1Id] = [];
+        level2BySponsor[firstLevel1Id].push({
+          id: spilloverUser._id.toString(),
+          username: spilloverUser.username,
+          displayName: `${spilloverUser.firstName} ${spilloverUser.lastName}`.trim() || spilloverUser.username,
+        });
+      });
+    }
 
     const tree = {
       root: {
