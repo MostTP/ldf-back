@@ -351,21 +351,42 @@ async function getTeamSize(userId) {
 async function getMatrixLevelCounts(userId, maxLevels = 5) {
   const levelCounts = new Array(maxLevels).fill(0);
   
-  // Level 1: Direct referrals only
-  const level1Users = await User.find({ sponsorId: userId }).select('_id');
+  // Get all direct referrals
+  const allDirectReferrals = await User.find({ sponsorId: userId }).select('_id').sort({ createdAt: 1 });
+  
+  // Level 1: First 5 direct referrals only (spillover users go to Level 2)
+  const level1Users = allDirectReferrals.slice(0, 5);
   levelCounts[0] = level1Users.length;
   
   if (level1Users.length === 0) {
     return levelCounts;
   }
 
-  // For levels 2-5, count all users in that level's positions
-  // Level 2: All users who are direct referrals of Level 1 users
-  // Level 3: All users who are direct referrals of Level 2 users
-  // etc.
-  let currentLevelUsers = level1Users;
+  // Get spillover direct referrals (6th+ direct referrals)
+  const spilloverUsers = allDirectReferrals.slice(5);
   
-  for (let level = 1; level < maxLevels; level++) {
+  // Level 2: Users referred by Level 1 users + spillover direct referrals
+  const level1Ids = level1Users.map(u => u._id);
+  let level2Users = [];
+  
+  if (level1Ids.length > 0) {
+    // Get users directly referred by Level 1 users
+    level2Users = await User.find({ 
+      sponsorId: { $in: level1Ids } 
+    }).select('_id');
+  }
+  
+  // Add spillover users to Level 2 count
+  levelCounts[1] = level2Users.length + spilloverUsers.length;
+  
+  // For levels 3-5, count all users in that level's positions
+  // Level 3: All users who are direct referrals of Level 2 users
+  // Level 4: All users who are direct referrals of Level 3 users
+  // etc.
+  // Note: For Level 3+, we need to include spillover users in the chain
+  let currentLevelUsers = [...level2Users, ...spilloverUsers];
+  
+  for (let level = 2; level < maxLevels; level++) {
     const currentLevelIds = currentLevelUsers.map(u => u._id);
     
     if (currentLevelIds.length === 0) {
