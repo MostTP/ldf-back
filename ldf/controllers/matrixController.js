@@ -15,11 +15,36 @@ export async function getMatrixTree(req, res) {
       });
     }
 
-    // Level 1: First 5 direct referrals only
-    const level1Users = await User.find({ sponsorId: userId })
+    // Level 1: First 5 direct referrals + spillover from upline (if user has less than 5 direct referrals)
+    // Get all direct referrals
+    const allDirectReferrals = await User.find({ sponsorId: userId })
       .select('_id username firstName lastName')
-      .sort({ createdAt: 1 })
-      .limit(5); // Limit to 5 for Level 1
+      .sort({ createdAt: 1 });
+    
+    let level1Users = allDirectReferrals.slice(0, 5); // Start with first 5 direct referrals
+    
+    // If user has less than 5 direct referrals, check for spillover from upline
+    // Spillover from upline = upline's 6th+ direct referrals that can fill remaining Level 1 slots
+    if (level1Users.length < 5 && user.sponsorId) {
+      // Get upline's direct referrals to find spillover users
+      const uplineDirectReferrals = await User.find({ sponsorId: user.sponsorId })
+        .select('_id username firstName lastName')
+        .sort({ createdAt: 1 });
+      
+      // Upline's spillover users (6th+ direct referrals of upline)
+      // These are users who overflow from upline's Level 1 and can appear in downlines' Level 1
+      const uplineSpillover = uplineDirectReferrals.slice(5);
+      
+      // Fill remaining Level 1 slots with spillover from upline
+      const slotsNeeded = 5 - level1Users.length;
+      const availableSpillover = uplineSpillover.slice(0, slotsNeeded);
+      
+      // Add spillover users from upline to Level 1
+      level1Users = [...level1Users, ...availableSpillover];
+    }
+    
+    // Ensure Level 1 never exceeds 5 users
+    level1Users = level1Users.slice(0, 5);
 
     const level1Ids = level1Users.map((u) => u._id);
 
@@ -37,10 +62,7 @@ export async function getMatrixTree(req, res) {
 
     // Get spillover direct referrals (6th+ direct referrals of root user)
     // These are still direct referrals but placed in Level 2 positions
-    const allDirectReferrals = await User.find({ sponsorId: userId })
-      .select('_id username firstName lastName')
-      .sort({ createdAt: 1 });
-    
+    // If user's direct downline is up to 5, the next referral will be a spillover
     const spilloverUsers = allDirectReferrals.slice(5); // Skip first 5 (they're in Level 1)
 
     // Combine Level 2 users: those referred by Level 1 + spillover direct referrals

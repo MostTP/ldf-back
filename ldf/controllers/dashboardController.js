@@ -128,7 +128,9 @@ export async function getStats(req, res) {
     }
 
     // Get direct referrals count (users who have this user as sponsor)
-    const directReferrals = await User.countDocuments({ sponsorId: userId });
+    // Cap at 5 - spillover users (6th+) are not counted as direct referrals
+    const allDirectReferralsCount = await User.countDocuments({ sponsorId: userId });
+    const directReferrals = Math.min(allDirectReferralsCount, 5);
 
     // Get team size (all users in the downline matrix)
     // This includes direct referrals and their referrals recursively
@@ -149,7 +151,8 @@ export async function getStats(req, res) {
     
     // Calculate spillover: Direct referrals beyond Level 1 (beyond 5)
     // Spillover = direct referrals that overflow from Level 1 to Level 2+
-    const spillover = Math.max(0, directReferrals - 5);
+    // Use allDirectReferralsCount (not capped directReferrals) to calculate spillover
+    const spillover = Math.max(0, allDirectReferralsCount - 5);
 
     // Matrix slots configuration (per level) based on TOTAL MATRIX USERS (direct referrals + spillovers)
     // Capacities per level: 5, 25, 125, 625, 3125
@@ -225,34 +228,13 @@ export async function getStats(req, res) {
     else if (totalMatrixUsers >= 31) matrixLevel = 'Level 3';
     else if (totalMatrixUsers >= 6) matrixLevel = 'Level 2';
 
-    // Calculate slots filled for current matrix level
-    // Shows how many users (direct referrals + spillovers) are in the current level
-    // Matrix level capacities: 5, 25, 125, 625, 3125
-    const matrixLevelCapacities = [5, 25, 125, 625, 3125];
-    let slotsFilled = 0;
-    let maxSlots = 5; // Default to Level 1
-    
-    if (totalMatrixUsers <= 5) {
-      // Level 1: show actual count (0-5)
-      slotsFilled = totalMatrixUsers;
-      maxSlots = matrixLevelCapacities[0]; // 5
-    } else if (totalMatrixUsers <= 30) {
-      // Level 2: show count in Level 2 (6-30)
-      slotsFilled = totalMatrixUsers - 5;
-      maxSlots = matrixLevelCapacities[1]; // 25
-    } else if (totalMatrixUsers <= 155) {
-      // Level 3: show count in Level 3 (31-155)
-      slotsFilled = totalMatrixUsers - 30;
-      maxSlots = matrixLevelCapacities[2]; // 125
-    } else if (totalMatrixUsers <= 780) {
-      // Level 4: show count in Level 4 (156-780)
-      slotsFilled = totalMatrixUsers - 155;
-      maxSlots = matrixLevelCapacities[3]; // 625
-    } else {
-      // Level 5: show count in Level 5 (781+)
-      slotsFilled = totalMatrixUsers - 780;
-      maxSlots = matrixLevelCapacities[4]; // 3125
-    }
+    // Calculate total slots filled across all levels
+    // Sum all filled slots from each level in matrixSlots
+    const totalFilledSlots = matrixSlots.reduce((sum, slot) => sum + (slot.filledSlots || 0), 0);
+    // Total max slots across all levels: 5 + 25 + 125 + 625 + 3125 = 3905
+    const totalMaxSlots = 3905; // Sum of all level capacities
+    const slotsFilled = Math.min(totalFilledSlots, totalMaxSlots); // Total filled slots across all levels (capped at totalMaxSlots)
+    const maxSlots = totalMaxSlots;
 
     // Get user to check premium status and subscription
     let subDaysDisplay = '30/30';
