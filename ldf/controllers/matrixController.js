@@ -1,8 +1,6 @@
 import { User } from '../models/index.js';
 
-/**
- * Get basic matrix tree (L1 & L2 downline) for the authenticated user
- */
+
 export async function getMatrixTree(req, res) {
   try {
     const userId = req.user._id || req.user.id;
@@ -15,60 +13,41 @@ export async function getMatrixTree(req, res) {
       });
     }
 
-    // Level 1: First 5 direct referrals + spillover from upline (if user has less than 5 direct referrals)
-    // Get all direct referrals
-    const allDirectReferrals = await User.find({ sponsorId: userId })
-      .select('_id username firstName lastName')
-      .sort({ createdAt: 1 });
-    
-    // Start with user's direct referrals (first 5)
-    let level1Users = allDirectReferrals.slice(0, 5);
-    
-    // If user has less than 5 direct referrals, fill remaining slots with spillover from upline
-    // Spillover from upline = upline's 6th+ direct referrals that can fill remaining Level 1 slots
-    if (level1Users.length < 5 && user.sponsorId) {
-      // Get upline's direct referrals to find spillover users
+    let uplineSpilloverInLevel1 = [];
+    if (user.sponsorId) {
       const uplineDirectReferrals = await User.find({ sponsorId: user.sponsorId })
         .select('_id username firstName lastName')
         .sort({ createdAt: 1 });
       
-      // Upline's spillover users (6th+ direct referrals of upline)
-      // These are users who overflow from upline's Level 1 and can appear in downlines' Level 1
       const uplineSpillover = uplineDirectReferrals.slice(5);
       
-      // Fill remaining Level 1 slots with spillover from upline
-      const slotsNeeded = 5 - level1Users.length;
-      const availableSpillover = uplineSpillover.slice(0, slotsNeeded);
-      
-      // Add spillover users from upline to Level 1
-      level1Users = [...level1Users, ...availableSpillover];
+      uplineSpilloverInLevel1 = uplineSpillover.slice(0, 5);
     }
-    
-    // Ensure Level 1 never exceeds 5 users total (direct referrals + spillover from upline)
-    level1Users = level1Users.slice(0, 5);
-    
-    // Note: User's own direct referrals beyond 5 (6th+) will still be treated as spillover and go to Level 2
-    // This is independent of whether Level 1 has spillover from upline
 
-    const level1Ids = level1Users.map((u) => u._id);
-
-    // Level 2 includes:
-    // 1. Users who are direct referrals of Level 1 users
-    // 2. Spillover direct referrals (6th+ direct referrals of the root user)
+    const allDirectReferrals = await User.find({ sponsorId: userId })
+      .select('_id username firstName lastName')
+      .sort({ createdAt: 1 });
     
-    // Level 2: Each Level 1 user can have max 5 direct referrals under them
-    // Spillover from Level 1 (root user's 6th+ direct referrals) goes to Level 2
+    const spilloverCount = uplineSpilloverInLevel1.length;
+    const availableSlots = 5 - spilloverCount;
+    
+    const directReferralsInLevel1 = allDirectReferrals.slice(0, availableSlots);
+    
+    const directReferralsSpillover = allDirectReferrals.slice(availableSlots);
+    
+    const finalLevel1Users = [...uplineSpilloverInLevel1, ...directReferralsInLevel1].slice(0, 5);
+
+    const level1Ids = finalLevel1Users.map((u) => u._id);
+
     const level2BySponsor = {};
-    const level2Spillover = []; // Track Level 2 users that will spill to Level 3
+    const level2Spillover = [];
     
-    // For each Level 1 user, get their direct referrals (max 5 shown, excess becomes spillover to Level 3)
-    for (const level1User of level1Users) {
+    for (const level1User of finalLevel1Users) {
       const level1UserId = level1User._id.toString();
       const allLevel1UserDirectReferrals = await User.find({ sponsorId: level1UserId })
         .select('_id username firstName lastName')
         .sort({ createdAt: 1 });
       
-      // Show first 5 direct referrals in Level 2
       const level1UserDirectReferrals = allLevel1UserDirectReferrals.slice(0, 5);
       
       level2BySponsor[level1UserId] = level1UserDirectReferrals.map((u) => ({
@@ -77,7 +56,6 @@ export async function getMatrixTree(req, res) {
         displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
       }));
       
-      // If Level 1 user has more than 5 direct referrals, excess becomes spillover to Level 3
       if (allLevel1UserDirectReferrals.length > 5) {
         const level1UserSpillover = allLevel1UserDirectReferrals.slice(5);
         level2Spillover.push(...level1UserSpillover.map((u) => ({
@@ -89,25 +67,20 @@ export async function getMatrixTree(req, res) {
       }
     }
 
-    // Get spillover direct referrals from Level 1 (root user's 6th+ direct referrals)
-    // These go to Level 2 positions
-    const level1SpilloverUsers = allDirectReferrals.slice(5); // Skip first 5 (they're in Level 1)
+    const level1SpilloverUsers = directReferralsSpillover;
 
-    // Distribute Level 1 spillover (root user's 6th+ direct referrals) to Level 2
-    // Each Level 1 user can have max 5 direct referrals under them (including spillover from Level 1)
-    if (level1SpilloverUsers.length > 0 && level1Users.length > 0) {
+    if (level1SpilloverUsers.length > 0 && finalLevel1Users.length > 0) {
       let spilloverIndex = 0;
       
-      // Distribute Level 1 spillover across all Level 1 users
-      for (const level1User of level1Users) {
+      for (const level1User of finalLevel1Users) {
         if (spilloverIndex >= level1SpilloverUsers.length) break;
+        
         
         const level1UserId = level1User._id.toString();
         const currentLevel2Count = level2BySponsor[level1UserId]?.length || 0;
         const slotsAvailable = 5 - currentLevel2Count;
         
         if (slotsAvailable > 0) {
-          // Add Level 1 spillover users to this Level 1 user up to available slots
           const spilloverToAdd = level1SpilloverUsers.slice(
             spilloverIndex, 
             spilloverIndex + Math.min(slotsAvailable, level1SpilloverUsers.length - spilloverIndex)
@@ -129,8 +102,6 @@ export async function getMatrixTree(req, res) {
         }
       }
       
-      // If there are still Level 1 spillover users that couldn't fit in Level 2,
-      // they become spillover to Level 3 (but we only show Level 1 & 2 in visualization)
       if (spilloverIndex < level1SpilloverUsers.length) {
         const remainingSpillover = level1SpilloverUsers.slice(spilloverIndex);
         level2Spillover.push(...remainingSpillover.map((u) => ({
@@ -148,7 +119,7 @@ export async function getMatrixTree(req, res) {
         username: user.username,
         displayName: `${user.firstName} ${user.lastName}`.trim() || user.username,
       },
-      level1: level1Users.map((u) => ({
+      level1: finalLevel1Users.map((u) => ({
         id: u._id.toString(),
         username: u.username,
         displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
