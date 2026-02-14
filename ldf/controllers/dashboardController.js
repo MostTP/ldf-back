@@ -397,6 +397,44 @@ async function getMatrixLevelCounts(userId, maxLevels = 5) {
 }
 
 /**
+ * Get direct referrals list
+ */
+export async function getReferrals(req, res) {
+  try {
+    const userId = req.user.id;
+
+    // Get all direct referrals (users who have this user as sponsor)
+    const directReferrals = await User.find({ sponsorId: userId })
+      .select('firstName lastName username email phone isActive subscriptionExpiresAt createdAt')
+      .sort({ createdAt: -1 });
+
+    // Format referrals data
+    const referrals = directReferrals.map(referral => ({
+      id: referral._id.toString(),
+      name: `${referral.firstName} ${referral.lastName}`,
+      username: referral.username,
+      email: referral.email,
+      phone: referral.phone,
+      accountStatus: referral.isActive && (!referral.subscriptionExpiresAt || new Date(referral.subscriptionExpiresAt) > new Date())
+        ? 'Active'
+        : 'Inactive',
+      joinedDate: referral.createdAt,
+    }));
+
+    res.json({
+      success: true,
+      referrals,
+    });
+  } catch (error) {
+    logger.error('Get referrals error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch referrals',
+    });
+  }
+}
+
+/**
  * Update user profile (firstName, lastName, email, phone)
  */
 export async function updateProfile(req, res) {
