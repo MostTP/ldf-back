@@ -3,18 +3,14 @@ import { verifyWebhookSignature } from '../services/seerbitService.js';
 import { logger } from '../utils/logger.js';
 import mongoose from 'mongoose';
 
-/**
- * Handle Seerbit webhook for withdrawal status updates
- */
+
 export async function handleSeerbitWebhook(req, res) {
   try {
-    // Parse body
     let body = req.body;
     if (Buffer.isBuffer(req.body)) {
       body = JSON.parse(req.body.toString('utf8'));
     }
 
-    // Verify webhook signature
     const signature = req.headers['x-seerbit-signature'] || req.headers['signature'] || req.headers['authorization'];
     if (signature && !verifyWebhookSignature(body, signature)) {
       logger.warn('Invalid Seerbit webhook signature');
@@ -24,7 +20,6 @@ export async function handleSeerbitWebhook(req, res) {
       });
     }
 
-    // Log webhook received
     logger.info('Seerbit webhook received');
 
     const transactionReference = body.transactionReference || body.reference || body.data?.reference;
@@ -49,7 +44,6 @@ export async function handleSeerbitWebhook(req, res) {
       });
     }
 
-    // Update withdrawal status based on Seerbit response
     let newStatus = withdrawal.status;
     let rejectionReason = null;
 
@@ -59,10 +53,9 @@ export async function handleSeerbitWebhook(req, res) {
       newStatus = 'FAILED';
       rejectionReason = body.message || body.data?.message || body.reason || 'Transfer failed';
     } else if (status === 'PENDING' || status === 'PROCESSING' || status === '02') {
-      newStatus = 'APPROVED'; // Still processing
+      newStatus = 'APPROVED';
     }
 
-    // Handle balance updates based on status change
     const oldStatus = withdrawal.status;
     const withdrawalAmount = Number(withdrawal.amount);
 
@@ -88,7 +81,6 @@ export async function handleSeerbitWebhook(req, res) {
         );
         logger.info('Balance decremented for withdrawal');
 
-        // Create Detty December earning: 10% of withdrawal amount
         const dettyDecemberAmount = withdrawalAmount * 0.1;
         if (dettyDecemberAmount > 0) {
           await tx.earning.create({
@@ -100,7 +92,6 @@ export async function handleSeerbitWebhook(req, res) {
             },
           });
 
-          // Increment user's balance with Detty December bonus
           await tx.user.update({
             where: { id: withdrawal.userId },
             data: {

@@ -1,98 +1,118 @@
 import { User, Earning } from '../models/index.js';
 import { logger } from '../utils/logger.js';
+import { getMatrixFillStatus, getLevelFromPosition } from './matrixPlacementService.js';
 import mongoose from 'mongoose';
 
 /**
  * @param {string} userId 
  * @param {ObjectId} excludeUserId 
  * @param {object} session
- * @returns {Promise<number>} 
+ * @returns {Promise<number>}
  */
 async function getTotalMatrixUsers(userId, excludeUserId = null, session = null) {
-  const maxLevels = 5;
-  let totalCount = 0;
-  
-  const currentUser = await User.findById(userId).select('sponsorId').session(session);
-  if (!currentUser) {
-    return 0;
-  }
-
-  let uplineSpilloverCount = 0;
-  if (currentUser.sponsorId) {
-    const uplineDirectReferrals = await User.find({ sponsorId: currentUser.sponsorId })
-      .select('_id')
-      .sort({ createdAt: 1 })
-      .session(session);
+  try {
+    const fillStatus = await getMatrixFillStatus(userId, session);
     
-    const uplineSpillover = uplineDirectReferrals.slice(5);
-    uplineSpilloverCount = Math.min(uplineSpillover.length, 5);
-  }
-  
-  const level1Query = { sponsorId: userId };
-  if (excludeUserId) {
-    level1Query._id = { $ne: excludeUserId };
-  }
-  const allDirectReferrals = await User.find(level1Query).select('_id').sort({ createdAt: 1 }).session(session);
-  
-  const availableSlots = 5 - uplineSpilloverCount;
-  
-  const directReferralsInLevel1 = allDirectReferrals.slice(0, availableSlots);
-  
-  const level1Count = uplineSpilloverCount + directReferralsInLevel1.length;
-  totalCount += level1Count;
-  
-  if (level1Count === 0) {
-    return totalCount;
-  }
+    if (excludeUserId) {
+      const matrix = fillStatus.matrix;
+      
+      let count = 0;
+      for (let i = 0; i < matrix.length; i++) {
+        if (matrix[i] !== null && matrix[i] !== excludeUserId.toString()) {
+          count++;
+        }
+      }
+      return count;
+    }
+    
+    return fillStatus.totalFilled;
+  } catch (error) {
+    logger.error(`[EARNINGS FLOW] Error getting total matrix users: ${error.message}`);
+    const maxLevels = 5;
+    let totalCount = 0;
+    
+    const currentUser = await User.findById(userId).select('sponsorId').session(session);
+    if (!currentUser) {
+      return 0;
+    }
 
-  const level1UserIds = [];
-  
-  if (currentUser.sponsorId) {
-    const uplineDirectReferrals = await User.find({ sponsorId: currentUser.sponsorId })
-      .select('_id')
-      .sort({ createdAt: 1 })
-      .session(session);
-    const uplineSpillover = uplineDirectReferrals.slice(5, 5 + uplineSpilloverCount);
-    level1UserIds.push(...uplineSpillover.map(u => u._id));
-  }
-  
-  level1UserIds.push(...directReferralsInLevel1.map(u => u._id));
-  
-  let level2Users = [];
-  if (level1UserIds.length > 0) {
-    for (const level1UserId of level1UserIds) {
-      const level1UserDirectReferrals = await User.find({ sponsorId: level1UserId })
+    let uplineSpilloverCount = 0;
+    if (currentUser.sponsorId) {
+      const uplineDirectReferrals = await User.find({ sponsorId: currentUser.sponsorId })
         .select('_id')
         .sort({ createdAt: 1 })
-        .limit(5)
         .session(session);
-      level2Users.push(...level1UserDirectReferrals);
-    }
-  }
-  
-  const userSpillover = allDirectReferrals.slice(availableSlots);
-  level2Users.push(...userSpillover);
-  
-  const level2Count = level2Users.length;
-  totalCount += level2Count;
-  
-  let currentLevelUsers = level2Users;
-  
-  for (let level = 2; level < maxLevels; level++) {
-    if (currentLevelUsers.length === 0) {
-      break;
+      
+      const uplineSpillover = uplineDirectReferrals.slice(5);
+      uplineSpilloverCount = Math.min(uplineSpillover.length, 5);
     }
     
-    const currentLevelIds = currentLevelUsers.map(u => u._id);
-    const nextLevelUsers = await User.find({ 
-      sponsorId: { $in: currentLevelIds } 
-    }).select('_id').session(session);
+    const level1Query = { sponsorId: userId };
+    if (excludeUserId) {
+      level1Query._id = { $ne: excludeUserId };
+    }
+    const allDirectReferrals = await User.find(level1Query).select('_id').sort({ createdAt: 1 }).session(session);
     
-    totalCount += nextLevelUsers.length;
-    currentLevelUsers = nextLevelUsers;
+    const availableSlots = 5 - uplineSpilloverCount;
+    
+    const directReferralsInLevel1 = allDirectReferrals.slice(0, availableSlots);
+    
+    const level1Count = uplineSpilloverCount + directReferralsInLevel1.length;
+    totalCount += level1Count;
+    
+    if (level1Count === 0) {
+      return totalCount;
+    }
+
+    const level1UserIds = [];
+    
+    if (currentUser.sponsorId) {
+      const uplineDirectReferrals = await User.find({ sponsorId: currentUser.sponsorId })
+        .select('_id')
+        .sort({ createdAt: 1 })
+        .session(session);
+      const uplineSpillover = uplineDirectReferrals.slice(5, 5 + uplineSpilloverCount);
+      level1UserIds.push(...uplineSpillover.map(u => u._id));
+    }
+    
+    level1UserIds.push(...directReferralsInLevel1.map(u => u._id));
+    
+    let level2Users = [];
+    if (level1UserIds.length > 0) {
+      for (const level1UserId of level1UserIds) {
+        const level1UserDirectReferrals = await User.find({ sponsorId: level1UserId })
+          .select('_id')
+          .sort({ createdAt: 1 })
+          .limit(5)
+          .session(session);
+        level2Users.push(...level1UserDirectReferrals);
+      }
+    }
+    
+    const userSpillover = allDirectReferrals.slice(availableSlots);
+    level2Users.push(...userSpillover);
+    
+    const level2Count = level2Users.length;
+    totalCount += level2Count;
+    
+    let currentLevelUsers = level2Users;
+    
+    for (let level = 2; level < maxLevels; level++) {
+      if (currentLevelUsers.length === 0) {
+        break;
+      }
+      
+      const currentLevelIds = currentLevelUsers.map(u => u._id);
+      const nextLevelUsers = await User.find({ 
+        sponsorId: { $in: currentLevelIds } 
+      }).select('_id').session(session);
+      
+      totalCount += nextLevelUsers.length;
+      currentLevelUsers = nextLevelUsers;
+    }
+    
+    return totalCount;
   }
-  
-  return totalCount;
 }
 
 /**
@@ -192,19 +212,97 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
       const sponsor = await User.findById(user.sponsorId).select('username').session(session);
       logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || user.sponsorId} has ${totalMatrixUsers} total matrix users. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
 
+      const isForceC = true;
+      
+      const sponsorDirectCount = await User.countDocuments({ 
+        sponsorId: user.sponsorId 
+      }).session(session);
+      
       const matrixEarning = await Earning.create([{
         userId: user.sponsorId,
         amount: matrixAmount,
         type: `MATRIX_LEVEL_${matrixLevel}`,
-        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, includes spillovers)`,
+        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Direct Referral)`,
+        metadata: { forceType: 'C', isDirectReferral: true },
       }], { session });
       
-      await User.findByIdAndUpdate(user.sponsorId, {
-        $inc: { balance: matrixAmount },
-      }, { session });
+      if (isForceC) {
+        await User.findByIdAndUpdate(user.sponsorId, {
+          $inc: { balance: matrixAmount },
+        }, { session });
+        logger.info(`[EARNINGS FLOW] Force C (Direct Referral) bonus added to main balance: ₦${matrixAmount}`);
+      } else {
+        if (sponsorDirectCount >= 2) {
+          await User.findByIdAndUpdate(user.sponsorId, {
+            $inc: { balance: matrixAmount },
+          }, { session });
+          logger.info(`[EARNINGS FLOW] Force A/B bonus added to main balance (sponsor has ${sponsorDirectCount} direct referrals)`);
+        } else {
+          await User.findByIdAndUpdate(user.sponsorId, {
+            $inc: { pendingBalance: matrixAmount },
+          }, { session });
+          logger.info(`[EARNINGS FLOW] Force A/B bonus added to pending balance (sponsor has ${sponsorDirectCount} direct referrals, needs 2 to unlock)`);
+        }
+      }
       
       logger.info(`[EARNINGS FLOW] ✓ MATRIX_LEVEL_${matrixLevel} created: Earning ID ${matrixEarning[0]._id}, Sponsor balance updated by ₦${matrixAmount}`);
       payouts.push(matrixEarning[0]);
+
+      const { getUplineHierarchy } = await import('../utils/matrixService.js');
+      const uplineChain = await getUplineHierarchy(user.sponsorId, session);
+      
+      for (const uplineUserId of uplineChain) {
+        const uplineMatrix = await getMatrixFillStatus(uplineUserId, session);
+        const newUserPosition = uplineMatrix.matrix.indexOf(newUserId.toString());
+        
+        if (newUserPosition !== -1) {
+          const uplineLevel = getLevelFromPosition(newUserPosition);
+          const uplineMatrixLevels = [
+            { start: 1, end: 5, amount: 100 },
+            { start: 6, end: 30, amount: 70 },
+            { start: 31, end: 155, amount: 60 },
+            { start: 156, end: 780, amount: 70 },
+            { start: 781, end: 3905, amount: 200 },
+          ];
+          
+          const uplineBonus = uplineMatrixLevels[uplineLevel.level - 1]?.amount || 0;
+          
+          if (uplineBonus > 0) {
+            const isUplineDirectReferral = user.sponsorId && user.sponsorId.toString() === uplineUserId.toString();
+            const isForceC = false;
+            
+            const uplineDirectCount = await User.countDocuments({ 
+              sponsorId: uplineUserId 
+            }).session(session);
+            
+            const forceType = isUplineDirectReferral ? 'A' : 'B';
+            const forceDescription = forceType === 'A' ? 'Force A - Spillover' : 'Force B - Spill-Under';
+            
+            const uplineEarning = await Earning.create([{
+              userId: uplineUserId,
+              amount: uplineBonus,
+              type: `MATRIX_LEVEL_${uplineLevel.level}`,
+              description: `Matrix level ${uplineLevel.level} bonus (upline) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, ${forceDescription})`,
+              metadata: { forceType, isDirectReferral: isUplineDirectReferral },
+            }], { session });
+            
+            if (uplineDirectCount >= 2) {
+              await User.findByIdAndUpdate(uplineUserId, {
+                $inc: { balance: uplineBonus },
+              }, { session });
+              logger.info(`[EARNINGS FLOW] ${forceDescription} bonus added to main balance (upline has ${uplineDirectCount} direct referrals)`);
+            } else {
+              await User.findByIdAndUpdate(uplineUserId, {
+                $inc: { pendingBalance: uplineBonus },
+              }, { session });
+              logger.info(`[EARNINGS FLOW] ${forceDescription} bonus added to pending balance (upline has ${uplineDirectCount} direct referrals, needs 2 to unlock)`);
+            }
+            
+            logger.info(`[EARNINGS FLOW] ✓ Upline ${uplineUserId} earned ₦${uplineBonus} (Level ${uplineLevel.level})`);
+            payouts.push(uplineEarning[0]);
+          }
+        }
+      }
     } else {
       logger.warn(`[EARNINGS FLOW] Referral position ${referralPosition} exceeds maximum matrix levels (3905) or invalid level, no matrix bonus paid`);
     }

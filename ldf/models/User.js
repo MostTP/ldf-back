@@ -105,6 +105,26 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: 0,
   },
+  // Pending balance (requires 2 direct referrals to unlock)
+  pendingBalance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  // Subscription status
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  subscriptionExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  // Matrix placement lock (for concurrency)
+  matrixPlacementLock: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true, // Adds createdAt and updatedAt
 });

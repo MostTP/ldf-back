@@ -1,14 +1,13 @@
 import { User, Coupon } from '../models/index.js';
 import { triggerActivationPayouts } from './earningsEngine.js';
+import { withMatrixLock } from './matrixLockService.js';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 
 /**
- * Activate a user with a coupon
- * Validates coupon, marks as used, and triggers payouts
- * @param {number} userId - User ID to activate
- * @param {string} couponCode - Coupon code to use
- * @returns {Promise<Object>} Activation result
+ * @param {number} userId
+ * @param {string} couponCode
+ * @returns {Promise<Object>}
  */
 export async function activateUser(userId, couponCode) {
   logger.info(`[ACTIVATION] Starting activation for user ${userId} with coupon ${couponCode}`);
@@ -45,8 +44,29 @@ export async function activateUser(userId, couponCode) {
       usedAt: new Date(),
     }, { session });
 
+    const subscriptionExpiresAt = new Date();
+    subscriptionExpiresAt.setDate(subscriptionExpiresAt.getDate() + 30);
+    
+    await User.findByIdAndUpdate(userId, {
+      isActive: true,
+      subscriptionExpiresAt,
+    }, { session });
+
     logger.info(`[ACTIVATION] Triggering earnings payouts`);
-    const payoutResult = await triggerActivationPayouts(userId, 50, session);
+    
+    let payoutResult;
+    if (user.sponsorId) {
+      payoutResult = await withMatrixLock(
+        user.sponsorId,
+        async () => {
+          return await triggerActivationPayouts(userId, 50, session);
+        },
+        session
+      );
+    } else {
+      payoutResult = await triggerActivationPayouts(userId, 50, session);
+    }
+    
     logger.info(`[ACTIVATION] Earnings payouts completed: ${payoutResult.payouts} payouts, Total: ₦${payoutResult.totalAmount}`);
 
     await session.commitTransaction();

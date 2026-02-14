@@ -19,6 +19,10 @@ const earningSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
 }, {
   timestamps: { createdAt: true, updatedAt: false }
 });

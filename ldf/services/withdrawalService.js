@@ -1,10 +1,10 @@
 import { User, Earning, Withdrawal } from '../models/index.js';
 import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
 
 /**
- * Get user's stored balance (fast - returns cached value)
- * @param {number} userId - User ID
- * @returns {Promise<number>} Stored balance
+ * @param {number} userId
+ * @returns {Promise<number>}
  */
 export async function getUserBalance(userId) {
   const user = await User.findById(userId).select('balance');
@@ -15,9 +15,8 @@ export async function getUserBalance(userId) {
 }
 
 /**
- * Recalculate user's balance from earnings and withdrawals (for corrections)
- * @param {number} userId - User ID
- * @returns {Promise<number>} Recalculated balance
+ * @param {number} userId
+ * @returns {Promise<number>}
  */
 export async function recalculateBalance(userId) {
   const result = await Earning.aggregate([
@@ -44,9 +43,8 @@ export async function recalculateBalance(userId) {
 }
 
 /**
- * Increment user's balance (when earning is created)
- * @param {number} userId - User ID
- * @param {number} amount - Amount to add
+ * @param {number} userId
+ * @param {number} amount
  * @returns {Promise<void>}
  */
 export async function incrementBalance(userId, amount) {
@@ -56,9 +54,8 @@ export async function incrementBalance(userId, amount) {
 }
 
 /**
- * Decrement user's balance (when withdrawal is approved/paid)
- * @param {number} userId - User ID
- * @param {number} amount - Amount to subtract
+ * @param {number} userId
+ * @param {number} amount
  * @returns {Promise<void>}
  */
 export async function decrementBalance(userId, amount) {
@@ -68,12 +65,11 @@ export async function decrementBalance(userId, amount) {
 }
 
 /**
- * Create a withdrawal request
- * @param {number} userId - User ID
- * @param {number} amount - Withdrawal amount
- * @param {string} currency - Currency code (default: NGN)
- * @param {Object} bankDetails - Bank account details
- * @returns {Promise<Object>} Withdrawal record
+ * @param {number} userId
+ * @param {number} amount
+ * @param {string} currency
+ * @param {Object} bankDetails
+ * @returns {Promise<Object>}
  */
 export async function createWithdrawal(userId, amount, currency = 'NGN', bankDetails) {
   const session = await mongoose.startSession();
@@ -83,6 +79,18 @@ export async function createWithdrawal(userId, amount, currency = 'NGN', bankDet
     const user = await User.findById(userId).session(session);
     if (!user) {
       throw new Error('User not found');
+    }
+
+    const directReferralsCount = await User.countDocuments({ sponsorId: userId }).session(session);
+    if (directReferralsCount < 2) {
+      throw new Error(`You need at least 2 direct referrals to withdraw. You currently have ${directReferralsCount}. Matrix earnings are in your pending balance until you unlock.`);
+    }
+
+    if (user.pendingBalance > 0) {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { balance: user.pendingBalance, pendingBalance: -user.pendingBalance },
+      }, { session });
+      logger.info(`[WITHDRAWAL] Transferred ₦${user.pendingBalance} from pending to main balance for user ${userId}`);
     }
 
     if (!user.kycVerified && process.env.NODE_ENV === 'production') {
@@ -119,10 +127,9 @@ export async function createWithdrawal(userId, amount, currency = 'NGN', bankDet
 }
 
 /**
- * Process withdrawal (approve and trigger payment via Interswitch)
- * @param {number} withdrawalId - Withdrawal ID
- * @param {string} paymentReference - Payment gateway reference (optional, will be generated)
- * @returns {Promise<Object>} Updated withdrawal with payment details
+ * @param {number} withdrawalId
+ * @param {string} paymentReference
+ * @returns {Promise<Object>}
  */
 export async function processWithdrawal(withdrawalId, paymentReference = null) {
   const session = await mongoose.startSession();
@@ -138,13 +145,10 @@ export async function processWithdrawal(withdrawalId, paymentReference = null) {
       throw new Error(`Withdrawal is already ${withdrawal.status}`);
     }
 
-    // Generate payment reference if not provided
     const txReference = paymentReference || `LDF-WD-${withdrawalId}-${Date.now()}`;
 
-    // Import Seerbit service
     const { initiateBankTransfer } = await import('./seerbitService.js');
 
-    // Map bank name to bank code (common Nigerian banks)
     const bankCodeMap = {
       'Access Bank': '044',
       'GTBank': '058',
@@ -171,7 +175,6 @@ export async function processWithdrawal(withdrawalId, paymentReference = null) {
       throw new Error(`Bank code not found for ${withdrawal.bankName}. Please ensure bank name matches supported banks.`);
     }
 
-    // Initiate bank transfer via Seerbit
     try {
       const transferResult = await initiateBankTransfer({
         accountNumber: withdrawal.bankAccount,
