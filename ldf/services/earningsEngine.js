@@ -4,6 +4,24 @@ import { getMatrixFillStatus, getLevelFromPosition } from './matrixPlacementServ
 import mongoose from 'mongoose';
 
 /**
+ * Get the first user in the system (by creation date)
+ * This user receives commissions for orphaned signups (users without sponsors)
+ * @param {object} session - MongoDB session
+ * @returns {Promise<string|null>} First user ID or null if no users exist
+ */
+async function getFirstUser(session = null) {
+  try {
+    let query = User.findOne().sort({ createdAt: 1 }).select('_id');
+    if (session) query = query.session(session);
+    const firstUser = await query;
+    return firstUser ? firstUser._id.toString() : null;
+  } catch (error) {
+    logger.error('[EARNINGS FLOW] Error finding first user:', error);
+    return null;
+  }
+}
+
+/**
  * @param {string} userId 
  * @param {ObjectId} excludeUserId 
  * @param {object} session
@@ -28,9 +46,9 @@ async function getTotalMatrixUsers(userId, excludeUserId = null, session = null)
     return fillStatus.totalFilled;
   } catch (error) {
     logger.error(`[EARNINGS FLOW] Error getting total matrix users: ${error.message}`);
-    const maxLevels = 5;
-    let totalCount = 0;
-    
+  const maxLevels = 5;
+  let totalCount = 0;
+  
     const currentUser = await User.findById(userId).select('sponsorId').session(session);
     if (!currentUser) {
       return 0;
@@ -47,10 +65,10 @@ async function getTotalMatrixUsers(userId, excludeUserId = null, session = null)
       uplineSpilloverCount = Math.min(uplineSpillover.length, 5);
     }
     
-    const level1Query = { sponsorId: userId };
-    if (excludeUserId) {
-      level1Query._id = { $ne: excludeUserId };
-    }
+  const level1Query = { sponsorId: userId };
+  if (excludeUserId) {
+    level1Query._id = { $ne: excludeUserId };
+  }
     const allDirectReferrals = await User.find(level1Query).select('_id').sort({ createdAt: 1 }).session(session);
     
     const availableSlots = 5 - uplineSpilloverCount;
@@ -61,8 +79,8 @@ async function getTotalMatrixUsers(userId, excludeUserId = null, session = null)
     totalCount += level1Count;
     
     if (level1Count === 0) {
-      return totalCount;
-    }
+    return totalCount;
+  }
 
     const level1UserIds = [];
     
@@ -103,15 +121,15 @@ async function getTotalMatrixUsers(userId, excludeUserId = null, session = null)
       }
       
       const currentLevelIds = currentLevelUsers.map(u => u._id);
-      const nextLevelUsers = await User.find({ 
-        sponsorId: { $in: currentLevelIds } 
-      }).select('_id').session(session);
-      
-      totalCount += nextLevelUsers.length;
-      currentLevelUsers = nextLevelUsers;
-    }
+    const nextLevelUsers = await User.find({ 
+      sponsorId: { $in: currentLevelIds } 
+    }).select('_id').session(session);
     
-    return totalCount;
+    totalCount += nextLevelUsers.length;
+    currentLevelUsers = nextLevelUsers;
+  }
+  
+  return totalCount;
   }
 }
 
@@ -133,25 +151,44 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   
   const payouts = [];
 
-  if (user.sponsorId) {
-    const sponsor = await User.findById(user.sponsorId).select('firstName lastName username').session(session);
-    logger.info(`[EARNINGS FLOW] Creating REFERRAL_BONUS: ₦2,500 for sponsor ${sponsor?.username || user.sponsorId}`);
+  // Determine sponsor: use user's sponsorId, or fallback to first user in system
+  let sponsorId = user.sponsorId;
+  let isOrphanedUser = false;
+  
+  if (!sponsorId) {
+    const firstUserId = await getFirstUser(session);
+    // Only assign to first user if it's not the same as the activating user
+    if (firstUserId && firstUserId !== newUserId.toString()) {
+      sponsorId = firstUserId;
+      isOrphanedUser = true;
+      logger.info(`[EARNINGS FLOW] No sponsor found, allocating commission to first user in system: ${sponsorId}`);
+    } else {
+      logger.warn(`[EARNINGS FLOW] No sponsor found and first user is the activating user, skipping REFERRAL_BONUS`);
+    }
+  }
+
+  if (sponsorId) {
+    const sponsor = await User.findById(sponsorId).select('firstName lastName username').session(session);
+    const bonusDescription = isOrphanedUser 
+      ? `Referral bonus for ${user.firstName} ${user.lastName} (orphaned signup - allocated to first user)`
+      : `Referral bonus for ${user.firstName} ${user.lastName}`;
+    
+    logger.info(`[EARNINGS FLOW] Creating REFERRAL_BONUS: ₦2,500 for sponsor ${sponsor?.username || sponsorId}`);
     
     const referralEarning = await Earning.create([{
-      userId: user.sponsorId,
+      userId: sponsorId,
       amount: 2500,
       type: 'REFERRAL_BONUS',
-      description: `Referral bonus for ${user.firstName} ${user.lastName}`,
+      description: bonusDescription,
+      metadata: { isOrphanedUser },
     }], { session });
     
-    await User.findByIdAndUpdate(user.sponsorId, {
+    await User.findByIdAndUpdate(sponsorId, {
       $inc: { balance: 2500 },
     }, { session });
     
     logger.info(`[EARNINGS FLOW] ✓ REFERRAL_BONUS created: Earning ID ${referralEarning[0]._id}, User balance updated`);
     payouts.push(referralEarning[0]);
-  } else {
-    logger.info(`[EARNINGS FLOW] No sponsor found, skipping REFERRAL_BONUS`);
   }
 
   logger.info(`[EARNINGS FLOW] Creating GLOBAL_POOL_CONTRIBUTION: ₦1,000 for new user`);
@@ -182,16 +219,18 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
     { start: 781, end: 3905, amount: 200 }, 
   ];
   
-  if (user.sponsorId) {
-    logger.info(`[EARNINGS FLOW] Processing matrix level bonus for direct sponsor`);
+  // Use sponsorId (either from user or first user fallback)
+  if (sponsorId) {
+    const sponsorDescription = isOrphanedUser ? 'first user (orphaned signup)' : 'direct sponsor';
+    logger.info(`[EARNINGS FLOW] Processing matrix level bonus for ${sponsorDescription}`);
     
     const newUserObjectId = mongoose.Types.ObjectId.isValid(newUserId) 
       ? new mongoose.Types.ObjectId(newUserId) 
       : newUserId;
     
-    const totalMatrixUsers = await getTotalMatrixUsers(user.sponsorId, newUserObjectId, session);
+    const totalMatrixUsers = await getTotalMatrixUsers(sponsorId, newUserObjectId, session);
     
-    logger.info(`[EARNINGS FLOW] Sponsor ${user.sponsorId} has ${totalMatrixUsers} total matrix users (direct + spillover, excluding new user ${newUserId})`);
+    logger.info(`[EARNINGS FLOW] Sponsor ${sponsorId} has ${totalMatrixUsers} total matrix users (direct + spillover, excluding new user ${newUserId})`);
     
     const referralPosition = totalMatrixUsers + 1;
     
@@ -209,36 +248,40 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
     logger.info(`[EARNINGS FLOW] New referral position: ${referralPosition}, Matrix Level: ${matrixLevel}, Amount: ₦${matrixAmount}`);
     
     if (matrixLevel > 0 && matrixAmount > 0) {
-      const sponsor = await User.findById(user.sponsorId).select('username').session(session);
-      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || user.sponsorId} has ${totalMatrixUsers} total matrix users. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
+      const sponsor = await User.findById(sponsorId).select('username').session(session);
+      const matrixDescription = isOrphanedUser
+        ? `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Orphaned Signup allocated to first user)`
+        : `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Direct Referral)`;
+      
+      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || sponsorId} has ${totalMatrixUsers} total matrix users. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
 
       const isForceC = true;
       
       const sponsorDirectCount = await User.countDocuments({ 
-        sponsorId: user.sponsorId 
+        sponsorId: sponsorId 
       }).session(session);
-      
+
       const matrixEarning = await Earning.create([{
-        userId: user.sponsorId,
+        userId: sponsorId,
         amount: matrixAmount,
         type: `MATRIX_LEVEL_${matrixLevel}`,
-        description: `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Direct Referral)`,
-        metadata: { forceType: 'C', isDirectReferral: true },
+        description: matrixDescription,
+        metadata: { forceType: 'C', isDirectReferral: !isOrphanedUser, isOrphanedUser },
       }], { session });
       
       if (isForceC) {
-        await User.findByIdAndUpdate(user.sponsorId, {
+        await User.findByIdAndUpdate(sponsorId, {
           $inc: { balance: matrixAmount },
         }, { session });
         logger.info(`[EARNINGS FLOW] Force C (Direct Referral) bonus added to main balance: ₦${matrixAmount}`);
       } else {
         if (sponsorDirectCount >= 2) {
-          await User.findByIdAndUpdate(user.sponsorId, {
-            $inc: { balance: matrixAmount },
-          }, { session });
+          await User.findByIdAndUpdate(sponsorId, {
+        $inc: { balance: matrixAmount },
+      }, { session });
           logger.info(`[EARNINGS FLOW] Force A/B bonus added to main balance (sponsor has ${sponsorDirectCount} direct referrals)`);
         } else {
-          await User.findByIdAndUpdate(user.sponsorId, {
+          await User.findByIdAndUpdate(sponsorId, {
             $inc: { pendingBalance: matrixAmount },
           }, { session });
           logger.info(`[EARNINGS FLOW] Force A/B bonus added to pending balance (sponsor has ${sponsorDirectCount} direct referrals, needs 2 to unlock)`);
@@ -249,7 +292,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
       payouts.push(matrixEarning[0]);
 
       const { getUplineHierarchy } = await import('../utils/matrixService.js');
-      const uplineChain = await getUplineHierarchy(user.sponsorId, session);
+      const uplineChain = await getUplineHierarchy(sponsorId, session);
       
       for (const uplineUserId of uplineChain) {
         const uplineMatrix = await getMatrixFillStatus(uplineUserId, session);
@@ -268,7 +311,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
           const uplineBonus = uplineMatrixLevels[uplineLevel.level - 1]?.amount || 0;
           
           if (uplineBonus > 0) {
-            const isUplineDirectReferral = user.sponsorId && user.sponsorId.toString() === uplineUserId.toString();
+            const isUplineDirectReferral = sponsorId && sponsorId.toString() === uplineUserId.toString();
             const isForceC = false;
             
             const uplineDirectCount = await User.countDocuments({ 
@@ -306,8 +349,6 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
     } else {
       logger.warn(`[EARNINGS FLOW] Referral position ${referralPosition} exceeds maximum matrix levels (3905) or invalid level, no matrix bonus paid`);
     }
-  } else {
-    logger.info(`[EARNINGS FLOW] No sponsor found, skipping matrix level bonuses`);
   }
 
   const totalAmount = payouts.reduce((sum, p) => sum + Number(p.amount), 0);

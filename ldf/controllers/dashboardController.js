@@ -408,18 +408,63 @@ export async function getReferrals(req, res) {
       .select('firstName lastName username email phone isActive subscriptionExpiresAt createdAt')
       .sort({ createdAt: -1 });
 
-    // Format referrals data
-    const referrals = directReferrals.map(referral => ({
-      id: referral._id.toString(),
-      name: `${referral.firstName} ${referral.lastName}`,
-      username: referral.username,
-      email: referral.email,
-      phone: referral.phone,
-      accountStatus: referral.isActive && (!referral.subscriptionExpiresAt || new Date(referral.subscriptionExpiresAt) > new Date())
-        ? 'Active'
-        : 'Inactive',
-      joinedDate: referral.createdAt,
-    }));
+    // Get matrix structure to find levels
+    const { getMatrixFillStatus } = await import('../services/matrixPlacementService.js');
+    const { getDownlineLevel } = await import('../utils/matrixService.js');
+    const matrixData = await getMatrixFillStatus(userId);
+    const matrix = matrixData.matrix;
+    
+    // Helper to get level from position
+    const getLevelFromPosition = (position) => {
+      if (position < 5) return 1;
+      if (position < 30) return 2;
+      if (position < 155) return 3;
+      if (position < 780) return 4;
+      if (position < 3905) return 5;
+      return 0;
+    };
+
+    // Format referrals data with all required fields
+    const referrals = await Promise.all(
+      directReferrals.map(async (referral) => {
+        const referralId = referral._id.toString();
+        
+        // Find referral's position in matrix
+        const matrixPosition = matrix.indexOf(referralId);
+        const matrixLevel = matrixPosition !== -1 ? getLevelFromPosition(matrixPosition) : 1;
+        
+        // Get direct downlines count for this referral
+        const directDownlines = await User.countDocuments({ sponsorId: referralId });
+        
+        // Calculate subscription days left
+        let subDaysLeft = 0;
+        if (referral.subscriptionExpiresAt) {
+          const now = new Date();
+          const expiry = new Date(referral.subscriptionExpiresAt);
+          if (expiry > now) {
+            const diffTime = expiry - now;
+            subDaysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          }
+        }
+        
+        // Determine if active
+        const isActive = referral.isActive && 
+          (!referral.subscriptionExpiresAt || new Date(referral.subscriptionExpiresAt) > new Date());
+
+        return {
+          id: referralId,
+          name: `${referral.firstName} ${referral.lastName}`,
+          username: referral.username,
+          email: referral.email,
+          phone: referral.phone,
+          isActive, // Boolean for frontend
+          createdAt: referral.createdAt, // Date for frontend
+          matrixLevel: `Level ${matrixLevel}`, // String format for frontend
+          directDownlines, // Number
+          subDaysLeft, // Number (days remaining)
+        };
+      })
+    );
 
     res.json({
       success: true,

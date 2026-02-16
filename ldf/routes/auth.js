@@ -231,6 +231,23 @@ router.post('/register', registerValidation, async (req, res) => {
         logger.warn('Sponsor not found. User will be registered without sponsor.');
       }
     }
+    
+    // If no sponsor found, assign to first user in system (unless this IS the first user)
+    if (!resolvedSponsorId) {
+      const firstUser = await User.findOne().sort({ createdAt: 1 }).select('_id');
+      if (firstUser) {
+        // Check if this is the first user signing up (no users exist yet)
+        const userCount = await User.countDocuments();
+        if (userCount > 0) {
+          // Not the first user, assign to first user
+          resolvedSponsorId = firstUser._id;
+          logger.info(`No sponsor provided, assigning to first user in system: ${firstUser._id}`);
+        } else {
+          // This is the first user, leave sponsorId as null
+          logger.info(`First user in system registering, no sponsor assigned`);
+        }
+      }
+    }
 
     // Validate coupon code if provided
     if (couponCode && couponCode.trim()) {
