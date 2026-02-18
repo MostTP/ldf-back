@@ -223,29 +223,23 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
   if (sponsorId) {
     const sponsorDescription = isOrphanedUser ? 'first user (orphaned signup)' : 'direct sponsor';
     logger.info(`[EARNINGS FLOW] Processing matrix level bonus for ${sponsorDescription}`);
-    
-    const newUserObjectId = mongoose.Types.ObjectId.isValid(newUserId) 
-      ? new mongoose.Types.ObjectId(newUserId) 
-      : newUserId;
-    
-    const totalMatrixUsers = await getTotalMatrixUsers(sponsorId, newUserObjectId, session);
-    
-    logger.info(`[EARNINGS FLOW] Sponsor ${sponsorId} has ${totalMatrixUsers} total matrix users (direct + spillover, excluding new user ${newUserId})`);
-    
-    const referralPosition = totalMatrixUsers + 1;
-    
+
+    // Commission must match actual placement: use the slot level where the new user is placed
+    // (spillover goes Level 5 first, so pay Level 5 rate when they are in a Level 5 slot)
+    const sponsorMatrix = await getMatrixFillStatus(sponsorId, session);
+    const newUserPosition = sponsorMatrix.matrix.indexOf(newUserId.toString());
+    const referralPosition = newUserPosition >= 0 ? newUserPosition + 1 : 0; // 1-based for display
+
     let matrixLevel = 0;
     let matrixAmount = 0;
-    
-    for (let i = 0; i < matrixLevels.length; i++) {
-      if (referralPosition >= matrixLevels[i].start && referralPosition <= matrixLevels[i].end) {
-        matrixLevel = i + 1;
-        matrixAmount = matrixLevels[i].amount;
-        break;
-      }
+
+    if (newUserPosition !== -1) {
+      const levelInfo = getLevelFromPosition(newUserPosition);
+      matrixLevel = levelInfo.level;
+      matrixAmount = matrixLevels[matrixLevel - 1]?.amount ?? 0;
     }
-    
-    logger.info(`[EARNINGS FLOW] New referral position: ${referralPosition}, Matrix Level: ${matrixLevel}, Amount: ₦${matrixAmount}`);
+
+    logger.info(`[EARNINGS FLOW] New referral position: ${referralPosition} (slot level ${matrixLevel}), Amount: ₦${matrixAmount}`);
     
     if (matrixLevel > 0 && matrixAmount > 0) {
       const sponsor = await User.findById(sponsorId).select('username').session(session);
@@ -253,7 +247,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
         ? `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Orphaned Signup allocated to first user)`
         : `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Direct Referral)`;
       
-      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || sponsorId} has ${totalMatrixUsers} total matrix users. New referral is #${referralPosition}, placing them in Level ${matrixLevel} → ₦${matrixAmount}`);
+      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || sponsorId}: new referral at position #${referralPosition} (Level ${matrixLevel}) → ₦${matrixAmount}`);
 
       const isForceC = true;
       
@@ -347,7 +341,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
         }
       }
     } else {
-      logger.warn(`[EARNINGS FLOW] Referral position ${referralPosition} exceeds maximum matrix levels (3905) or invalid level, no matrix bonus paid`);
+      logger.warn(`[EARNINGS FLOW] New user ${newUserId} not found in sponsor ${sponsorId} matrix or invalid level, no matrix bonus paid`);
     }
   }
 

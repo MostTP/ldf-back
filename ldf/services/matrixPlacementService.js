@@ -75,13 +75,14 @@ async function getMatrixStructure(userId, session = null) {
         }
       }
 
+      // Spillover fills Level 2 first, then 3, 4, 5 (top-down) so commission level matches placement
       if (spilloverIndex < userSpillover.length) {
         const levelStarts = [5, 30, 155, 780];
         const levelCaps = [25, 125, 625, 3125];
-        for (let depth = levelStarts.length - 1; depth >= 0 && spilloverIndex < userSpillover.length; depth--) {
+        for (let depth = 0; depth < levelStarts.length && spilloverIndex < userSpillover.length; depth++) {
           const depthStart = levelStarts[depth];
           const depthCapacity = levelCaps[depth];
-          
+
           for (let i = 0; i < depthCapacity && spilloverIndex < userSpillover.length; i++) {
             const absolutePosition = depthStart + i;
             if (absolutePosition < matrix.length && matrix[absolutePosition] === null) {

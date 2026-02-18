@@ -144,10 +144,10 @@ export async function getStats(req, res) {
       status: 'completed',
     });
 
-    // Get matrix level counts (includes both direct referrals and spillovers)
-    const matrixLevelCounts = await getMatrixLevelCounts(userId, 5);
-    
-    // Calculate total users in matrix (direct referrals + spillovers)
+    // Get matrix level counts: downline only (direct referrals + their referrals), no upline spillover
+    const matrixLevelCounts = await getMatrixLevelCountsDownlineOnly(userId, 5);
+
+    // Calculate total users in matrix (downline only)
     const totalMatrixUsers = matrixLevelCounts.reduce((sum, count) => sum + count, 0);
     
     // Calculate spillover: Direct referrals beyond Level 1 (beyond 5)
@@ -334,11 +334,8 @@ async function getTeamSize(userId) {
 }
 
 /**
- * Count users in each matrix level using Dual-Force Matrix algorithm
- * Includes: Spillover (from above), Spill-Under (from below), Direct Filling
- * @param {string} userId - The user ID to count matrix levels for
- * @param {number} maxLevels - Maximum levels to count (default 5)
- * @returns {Promise<number[]>} Array of counts for each level [level1, level2, level3, level4, level5]
+ * Count users in each matrix level using full matrix (includes upline spillover in Level 1).
+ * Used for placement/earnings logic.
  */
 async function getMatrixLevelCounts(userId, maxLevels = 5) {
   try {
@@ -346,54 +343,62 @@ async function getMatrixLevelCounts(userId, maxLevels = 5) {
     return fillStatus.levelCounts;
   } catch (error) {
     console.error('Error getting matrix level counts:', error);
-    // Fallback to simple counting if service fails
-    const levelCounts = new Array(maxLevels).fill(0);
-    
-    // Get all direct referrals
-    const allDirectReferrals = await User.find({ sponsorId: userId }).select('_id').sort({ createdAt: 1 });
-    
-    // Level 1: First 5 direct referrals only
-    const level1Users = allDirectReferrals.slice(0, 5);
-    levelCounts[0] = level1Users.length;
-    
-    if (level1Users.length === 0) {
-      return levelCounts;
-    }
+    return getMatrixLevelCountsDownlineOnly(userId, maxLevels);
+  }
+}
 
-    // Get spillover direct referrals (6th+ direct referrals)
-    const spilloverUsers = allDirectReferrals.slice(5);
-    
-    // Level 2: Users referred by Level 1 users + spillover direct referrals
-    const level1Ids = level1Users.map(u => u._id);
-    let level2Users = [];
-    
-    if (level1Ids.length > 0) {
-      level2Users = await User.find({ 
-        sponsorId: { $in: level1Ids } 
-      }).select('_id');
-    }
-    
-    levelCounts[1] = level2Users.length + spilloverUsers.length;
-    
-    let currentLevelUsers = [...level2Users, ...spilloverUsers];
-    
-    for (let level = 2; level < maxLevels; level++) {
-      const currentLevelIds = currentLevelUsers.map(u => u._id);
-      
-      if (currentLevelIds.length === 0) {
-        break;
-      }
-      
-      const nextLevelUsers = await User.find({ 
-        sponsorId: { $in: currentLevelIds } 
-      }).select('_id');
-      
-      levelCounts[level] = nextLevelUsers.length;
-      currentLevelUsers = nextLevelUsers;
-    }
-    
+/**
+ * Count users in each matrix level using only downline (lower-level users).
+ * Excludes upline spillover; only direct referrals and their referrals are counted.
+ * Use this for dashboard "Slots Filled" so the number reflects only users below this user.
+ * @param {string} userId - The user ID to count matrix levels for
+ * @param {number} maxLevels - Maximum levels to count (default 5)
+ * @returns {Promise<number[]>} Array of counts for each level [level1, level2, level3, level4, level5]
+ */
+async function getMatrixLevelCountsDownlineOnly(userId, maxLevels = 5) {
+  const levelCounts = new Array(maxLevels).fill(0);
+
+  const allDirectReferrals = await User.find({ sponsorId: userId }).select('_id').sort({ createdAt: 1 });
+
+  // Level 1: First 5 direct referrals only (no upline spillover)
+  const level1Users = allDirectReferrals.slice(0, 5);
+  levelCounts[0] = level1Users.length;
+
+  if (level1Users.length === 0) {
     return levelCounts;
   }
+
+  const spilloverUsers = allDirectReferrals.slice(5);
+
+  const level1Ids = level1Users.map(u => u._id);
+  let level2Users = [];
+
+  if (level1Ids.length > 0) {
+    level2Users = await User.find({
+      sponsorId: { $in: level1Ids },
+    }).select('_id');
+  }
+
+  levelCounts[1] = level2Users.length + spilloverUsers.length;
+
+  let currentLevelUsers = [...level2Users, ...spilloverUsers];
+
+  for (let level = 2; level < maxLevels; level++) {
+    const currentLevelIds = currentLevelUsers.map(u => u._id);
+
+    if (currentLevelIds.length === 0) {
+      break;
+    }
+
+    const nextLevelUsers = await User.find({
+      sponsorId: { $in: currentLevelIds },
+    }).select('_id');
+
+    levelCounts[level] = nextLevelUsers.length;
+    currentLevelUsers = nextLevelUsers;
+  }
+
+  return levelCounts;
 }
 
 /**
