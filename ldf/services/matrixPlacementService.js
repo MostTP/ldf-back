@@ -224,23 +224,133 @@ export async function getMatrixFillStatus(userId, session = null) {
 }
 
 /**
- * Get matrix tree structure for visualization (Level 1 & Level 2)
+ * Build tree { root, level1, fillStatus } from a matrix slice (level1UserIds, level2ByParent).
+ * level1 is built in matrix order. Used for both root and downline views.
+ */
+async function buildTreeFromSlice(user, level1UserIds, level2ByParent, fillStatus, session = null) {
+  if (level1UserIds.length === 0) {
+    return {
+      root: {
+        id: user._id.toString(),
+        username: user.username,
+        displayName: `${user.firstName} ${user.lastName}`.trim() || user.username,
+      },
+      level1: [],
+      fillStatus: fillStatus || { totalFilled: 0, levelCounts: [0, 0, 0, 0, 0] },
+    };
+  }
+
+  let level1Query = User.find({ _id: { $in: level1UserIds } })
+    .select('_id username firstName lastName');
+  if (session) level1Query = level1Query.session(session);
+  const level1Users = await level1Query;
+
+  const allLevel2Ids = Object.values(level2ByParent).flat().filter(Boolean);
+  const level2UsersMap = {};
+  if (allLevel2Ids.length > 0) {
+    let level2Query = User.find({ _id: { $in: allLevel2Ids } })
+      .select('_id username firstName lastName');
+    if (session) level2Query = level2Query.session(session);
+    const level2Users = await level2Query;
+    level2Users.forEach(u => {
+      level2UsersMap[u._id.toString()] = {
+        id: u._id.toString(),
+        username: u.username,
+        displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
+      };
+    });
+  }
+
+  const level1UsersById = {};
+  level1Users.forEach(u => { level1UsersById[u._id.toString()] = u; });
+
+  const level1 = level1UserIds
+    .map((parentId) => {
+      const idStr = parentId.toString();
+      const u = level1UsersById[idStr];
+      if (!u) return null;
+      return {
+        id: u._id.toString(),
+        username: u.username,
+        displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
+        children: (level2ByParent[idStr] || []).map(id => level2UsersMap[id.toString()] || null).filter(Boolean),
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    root: {
+      id: user._id.toString(),
+      username: user.username,
+      displayName: `${user.firstName} ${user.lastName}`.trim() || user.username,
+    },
+    level1,
+    fillStatus: fillStatus || { totalFilled: 0, levelCounts: [0, 0, 0, 0, 0] },
+  };
+}
+
+/**
+ * Get matrix tree structure for visualization (Level 1 & Level 2).
+ * If the user has a sponsor, the tree is built from their slice of the sponsor's matrix
+ * so spillover appears only under the L1 who earned it (not under every L1 when they log in).
  * @param {string} userId - The user ID
  * @param {object} session - MongoDB session
  * @returns {Promise<Object>} Tree structure with root, level1, and level2
  */
 export async function getMatrixTreeStructure(userId, session = null) {
-  const fillStatus = await getMatrixFillStatus(userId, session);
-  const matrix = fillStatus.matrix;
-  
   let userQuery = User.findById(userId)
     .select('_id username firstName lastName sponsorId');
   if (session) userQuery = userQuery.session(session);
   const user = await userQuery;
-  
+
   if (!user) {
     return null;
   }
+
+  const userIdStr = user._id.toString();
+
+  // Downline view: user has a sponsor — show only their slice of sponsor's matrix (no spillover under wrong L1)
+  if (user.sponsorId) {
+    const sponsorMatrix = await getMatrixStructure(user.sponsorId, session);
+    const l1Index = sponsorMatrix.slice(0, 5).findIndex((id) => id !== null && id.toString() === userIdStr);
+    if (l1Index === -1) {
+      // User not in sponsor's L1 (shouldn't happen) — fallback to empty tree
+      return buildTreeFromSlice(user, [], {}, { totalFilled: 0, levelCounts: [0, 0, 0, 0, 0] }, session);
+    }
+
+    const level2Start = 5 + l1Index * 5;
+    const level3Start = 30 + l1Index * 25;
+
+    const level1UserIds = [];
+    const level2ByParent = {};
+    let sliceFilled = 0;
+    const levelCounts = [0, 0, 0, 0, 0];
+
+    for (let j = 0; j < 5; j++) {
+      const pos = level2Start + j;
+      const id = pos < sponsorMatrix.length && sponsorMatrix[pos] !== null ? sponsorMatrix[pos] : null;
+      if (id) {
+        level1UserIds.push(id);
+        level2ByParent[id.toString()] = [];
+        levelCounts[0]++;
+        sliceFilled++;
+        for (let k = 0; k < 5; k++) {
+          const l3Pos = level3Start + j * 5 + k;
+          if (l3Pos < sponsorMatrix.length && sponsorMatrix[l3Pos] !== null) {
+            level2ByParent[id.toString()].push(sponsorMatrix[l3Pos]);
+            levelCounts[1]++;
+            sliceFilled++;
+          }
+        }
+      }
+    }
+
+    return buildTreeFromSlice(user, level1UserIds, level2ByParent, { totalFilled: sliceFilled, levelCounts }, session);
+  }
+
+  // Root view: no sponsor — use this user's full matrix (spillover shows under correct L1 by position)
+  const fillStatus = await getMatrixFillStatus(userId, session);
+  const matrix = fillStatus.matrix;
 
   const level1UserIds = [];
   for (let i = 0; i < 5; i++) {
@@ -249,19 +359,12 @@ export async function getMatrixTreeStructure(userId, session = null) {
     }
   }
 
-  let level1Query = User.find({ _id: { $in: level1UserIds } })
-    .select('_id username firstName lastName');
-  if (session) level1Query = level1Query.session(session);
-  const level1Users = await level1Query;
-
   const level2ByParent = {};
-  let level2Position = 5;
-
+  const level2Position = 5;
   for (let i = 0; i < level1UserIds.length; i++) {
     const parentId = level1UserIds[i];
     const parentIdStr = parentId.toString();
     level2ByParent[parentIdStr] = [];
-
     for (let j = 0; j < 5; j++) {
       const pos = level2Position + (i * 5) + j;
       if (pos < matrix.length && matrix[pos] !== null) {
@@ -270,38 +373,7 @@ export async function getMatrixTreeStructure(userId, session = null) {
     }
   }
 
-  const allLevel2Ids = Object.values(level2ByParent).flat();
-  let level2Query = User.find({ _id: { $in: allLevel2Ids } })
-    .select('_id username firstName lastName');
-  if (session) level2Query = level2Query.session(session);
-  const level2Users = await level2Query;
-
-  const level2UsersMap = {};
-  level2Users.forEach(u => {
-    level2UsersMap[u._id.toString()] = {
-      id: u._id.toString(),
-      username: u.username,
-      displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
-    };
-  });
-
-  return {
-    root: {
-      id: user._id.toString(),
-      username: user.username,
-      displayName: `${user.firstName} ${user.lastName}`.trim() || user.username,
-    },
-    level1: level1Users.map(u => ({
-      id: u._id.toString(),
-      username: u.username,
-      displayName: `${u.firstName} ${u.lastName}`.trim() || u.username,
-      children: (level2ByParent[u._id.toString()] || []).map(id => level2UsersMap[id.toString()] || null).filter(Boolean),
-    })),
-    fillStatus: {
-      totalFilled: fillStatus.totalFilled,
-      levelCounts: fillStatus.levelCounts,
-    },
-  };
+  return buildTreeFromSlice(user, level1UserIds, level2ByParent, fillStatus, session);
 }
 
 /**
