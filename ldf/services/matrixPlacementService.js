@@ -70,7 +70,9 @@ async function getMatrixStructure(userId, session = null) {
     if (parentPos === null) continue;
     const parentId = matrix[parentPos];
     if (!parentId) continue;
-    uid = placementMap.get(`${parentId}_${p}`);
+    // Parent's 5 slots = parent's matrix positions 0-4 (their direct refs), not p
+    const positionInParent = getLevelFromPosition(p).positionInLevel % 5;
+    uid = placementMap.get(`${parentId}_${positionInParent}`);
     if (uid) matrix[p] = uid;
   }
 
