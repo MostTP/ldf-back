@@ -47,88 +47,126 @@ async function getMatrixStructure(userId, session = null) {
     }
   }
 
-  let levelStartPosition = 5;
-  const userSpillover = allDirectReferrals.slice(availableLevel1Slots);
-  let spilloverIndex = 0;
+  // L2+ (positions 5-3904): build from stored matrixPositionInSponsor (first-available, first-come-first-serve, spillover never moves)
+  let placementQuery = User.find({ matrixPositionInSponsor: { $ne: null } })
+    .select('_id sponsorId matrixPositionInSponsor');
+  if (session) placementQuery = placementQuery.session(session);
+  const placements = await placementQuery;
+  const placementMap = new Map();
+  for (const u of placements) {
+    const sid = u.sponsorId ? u.sponsorId.toString() : '';
+    placementMap.set(`${sid}_${u.matrixPositionInSponsor}`, u._id.toString());
+  }
 
-  for (let level = 1; level < 5; level++) {
-    const levelCapacity = capacities[level];
-    const usersPerParent = 5;
-
-    if (level === 1) {
-      for (let i = 0; i < level1Users.length; i++) {
-        const parentUserId = level1Users[i];
-        if (!parentUserId) continue;
-
-        let parentQuery = User.find({ sponsorId: parentUserId })
-          .select('_id')
-          .sort({ createdAt: 1 })
-          .limit(usersPerParent);
-        if (session) parentQuery = parentQuery.session(session);
-        const parentDirectReferrals = await parentQuery;
-
-        for (let j = 0; j < usersPerParent; j++) {
-          const absolutePosition = levelStartPosition + (i * usersPerParent) + j;
-          if (absolutePosition < matrix.length && j < parentDirectReferrals.length) {
-            matrix[absolutePosition] = parentDirectReferrals[j]._id.toString();
-          }
-        }
-      }
-
-      // Spillover fills Level 2 first, then 3, 4, 5 (top-down) so commission level matches placement
-      if (spilloverIndex < userSpillover.length) {
-        const levelStarts = [5, 30, 155, 780];
-        const levelCaps = [25, 125, 625, 3125];
-        for (let depth = 0; depth < levelStarts.length && spilloverIndex < userSpillover.length; depth++) {
-          const depthStart = levelStarts[depth];
-          const depthCapacity = levelCaps[depth];
-
-          for (let i = 0; i < depthCapacity && spilloverIndex < userSpillover.length; i++) {
-            const absolutePosition = depthStart + i;
-            if (absolutePosition < matrix.length && matrix[absolutePosition] === null) {
-              matrix[absolutePosition] = userSpillover[spilloverIndex]._id.toString();
-              spilloverIndex++;
-            }
-          }
-        }
-      }
-    } else {
-      const parentLevelUsers = [];
-      const previousLevelCapacity = capacities[level - 1];
-      const previousLevelStart = levelStartPosition - previousLevelCapacity;
-      
-      for (let i = 0; i < previousLevelCapacity; i++) {
-        const pos = previousLevelStart + i;
-        if (pos >= 0 && pos < matrix.length && matrix[pos] !== null) {
-          parentLevelUsers.push(matrix[pos]);
-        }
-      }
-
-      let parentIndex = 0;
-      for (const parentUserId of parentLevelUsers) {
-        if (!parentUserId) continue;
-
-        let parentQuery = User.find({ sponsorId: parentUserId })
-          .select('_id')
-          .sort({ createdAt: 1 })
-          .limit(usersPerParent);
-        if (session) parentQuery = parentQuery.session(session);
-        const parentDirectReferrals = await parentQuery;
-
-        for (let j = 0; j < usersPerParent; j++) {
-          const absolutePosition = levelStartPosition + (parentIndex * usersPerParent) + j;
-          if (absolutePosition < matrix.length && j < parentDirectReferrals.length) {
-            matrix[absolutePosition] = parentDirectReferrals[j]._id.toString();
-          }
-        }
-        parentIndex++;
-      }
+  const ownerId = userId.toString();
+  for (let p = 5; p < 3905; p++) {
+    // Owner's direct ref (e.g. spillover) at position p
+    let uid = placementMap.get(`${ownerId}_${p}`);
+    if (uid) {
+      matrix[p] = uid;
+      continue;
     }
-
-    levelStartPosition += levelCapacity;
+    const parentPos = getParentPosition(p);
+    if (parentPos === null) continue;
+    const parentId = matrix[parentPos];
+    if (!parentId) continue;
+    uid = placementMap.get(`${parentId}_${p}`);
+    if (uid) matrix[p] = uid;
   }
 
   return matrix;
+}
+
+/**
+ * First available position >= 5 in sponsor's matrix (for spillover). Used so spillover is first-come-first-serve and never moves.
+ * @param {string} sponsorId - The sponsor user ID
+ * @param {object} session - MongoDB session
+ * @returns {Promise<number>} First position p >= 5 not assigned to any user with sponsorId
+ */
+export async function getFirstAvailableSpilloverPosition(sponsorId, session = null) {
+  let q = User.find({ sponsorId, matrixPositionInSponsor: { $gte: 5, $lte: 3904 } }).select('matrixPositionInSponsor');
+  if (session) q = q.session(session);
+  const used = await q;
+  const set = new Set(used.map((u) => u.matrixPositionInSponsor));
+  for (let p = 5; p < 3905; p++) {
+    if (!set.has(p)) return p;
+  }
+  return 3905; // matrix full
+}
+
+/**
+ * Assign and persist this user's position in their sponsor's matrix (first-available, first-come-first-serve; spillover never moves).
+ * Call at activation, inside matrix lock for sponsor. L1 (0-4) and spillover (5+) are both stored.
+ * @param {string} newUserId - The newly activated user ID
+ * @param {object} session - MongoDB session
+ */
+export async function assignMatrixPosition(newUserId, session = null) {
+  let userQuery = User.findById(newUserId).select('sponsorId');
+  if (session) userQuery = userQuery.session(session);
+  const user = await userQuery;
+  if (!user || !user.sponsorId) return;
+
+  const sponsorId = user.sponsorId.toString();
+
+  let refsQuery = User.find({ sponsorId }).select('_id createdAt').sort({ createdAt: 1 });
+  if (session) refsQuery = refsQuery.session(session);
+  const directRefs = await refsQuery;
+  const newUserIndex = directRefs.findIndex((r) => r._id.toString() === newUserId);
+  if (newUserIndex === -1) return;
+
+  let uplineSpilloverCount = 0;
+  let uplineQuery = User.findById(sponsorId).select('sponsorId');
+  if (session) uplineQuery = uplineQuery.session(session);
+  const sponsor = await uplineQuery;
+  if (sponsor && sponsor.sponsorId) {
+    let sibQuery = User.find({ sponsorId: sponsor.sponsorId }).select('_id').sort({ createdAt: 1 });
+    if (session) sibQuery = sibQuery.session(session);
+    const siblings = await sibQuery;
+    uplineSpilloverCount = Math.min(5, Math.max(0, siblings.length - 5));
+  }
+
+  const availableL1 = 5 - uplineSpilloverCount;
+  let position;
+
+  if (newUserIndex < availableL1) {
+    position = uplineSpilloverCount + newUserIndex;
+  } else {
+    position = await getFirstAvailableSpilloverPosition(sponsorId, session);
+    if (position >= 3905) return;
+  }
+
+  let updateQuery = User.findByIdAndUpdate(newUserId, { matrixPositionInSponsor: position }, { new: true });
+  if (session) updateQuery = updateQuery.session(session);
+  await updateQuery;
+}
+
+/**
+ * Backfill matrixPositionInSponsor for users who have a sponsor but no position set (e.g. before persistence was added).
+ * Processes in (sponsorId, createdAt) order so each sponsor's refs get correct L1/spillover order. Idempotent: skips users who already have a position.
+ * @param {object} session - Optional MongoDB session
+ * @returns {Promise<{ updated: number, skipped: number }>}
+ */
+export async function backfillMatrixPositions(session = null) {
+  let q = User.find({ sponsorId: { $ne: null }, $or: [{ matrixPositionInSponsor: null }, { matrixPositionInSponsor: { $exists: false } }] })
+    .select('_id sponsorId createdAt')
+    .sort({ sponsorId: 1, createdAt: 1 });
+  if (session) q = q.session(session);
+  const users = await q;
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const u of users) {
+    const userId = u._id.toString();
+    try {
+      await assignMatrixPosition(userId, session);
+      updated++;
+    } catch (err) {
+      skipped++;
+    }
+  }
+
+  return { updated, skipped };
 }
 
 /**
@@ -186,6 +224,24 @@ export function getLevelFromPosition(position) {
   }
   
   return { level: 5, positionInLevel: position - 3905, levelCapacity: 3125 };
+}
+
+/** Level start positions (0-based): L1=0, L2=5, L3=30, L4=155, L5=780 */
+const LEVEL_STARTS = [0, 5, 30, 155, 780];
+
+/**
+ * Get the matrix position of the parent slot for a given position.
+ * Level 1 (positions 0-4) has no parent in the matrix (direct children of matrix owner).
+ * @param {number} position - 0-based matrix position (0-3904)
+ * @returns {number|null} Parent position index, or null for Level 1
+ */
+export function getParentPosition(position) {
+  if (position < 0 || position >= 3905) return null;
+  const levelInfo = getLevelFromPosition(position);
+  if (levelInfo.level === 1) return null;
+  const level = levelInfo.level;
+  const parentPos = LEVEL_STARTS[level - 2] + Math.floor((position - LEVEL_STARTS[level - 1]) / 5);
+  return parentPos;
 }
 
 /**

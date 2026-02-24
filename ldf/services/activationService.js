@@ -1,6 +1,7 @@
 import { User, Coupon } from '../models/index.js';
 import { triggerActivationPayouts } from './earningsEngine.js';
 import { withMatrixLock } from './matrixLockService.js';
+import { assignMatrixPosition } from './matrixPlacementService.js';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 
@@ -52,18 +53,20 @@ export async function activateUser(userId, couponCode) {
       subscriptionExpiresAt,
     }, { session });
 
-    logger.info(`[ACTIVATION] Triggering earnings payouts`);
+    logger.info(`[ACTIVATION] Assigning matrix position and triggering earnings payouts`);
     
     let payoutResult;
     if (user.sponsorId) {
       payoutResult = await withMatrixLock(
         user.sponsorId,
         async () => {
+          await assignMatrixPosition(userId, session);
           return await triggerActivationPayouts(userId, 50, session);
         },
         session
       );
     } else {
+      await assignMatrixPosition(userId, session);
       payoutResult = await triggerActivationPayouts(userId, 50, session);
     }
     

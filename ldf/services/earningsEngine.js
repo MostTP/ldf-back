@@ -1,6 +1,6 @@
 import { User, Earning } from '../models/index.js';
 import { logger } from '../utils/logger.js';
-import { getMatrixFillStatus, getLevelFromPosition } from './matrixPlacementService.js';
+import { getMatrixFillStatus, getLevelFromPosition, getParentPosition } from './matrixPlacementService.js';
 import mongoose from 'mongoose';
 
 /**
@@ -228,7 +228,12 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
     // (spillover goes Level 5 first, so pay Level 5 rate when they are in a Level 5 slot)
     const sponsorMatrix = await getMatrixFillStatus(sponsorId, session);
     const newUserPosition = sponsorMatrix.matrix.indexOf(newUserId.toString());
-    const referralPosition = newUserPosition >= 0 ? newUserPosition + 1 : 0; // 1-based for display
+
+    // Position among sponsor's direct referrals (1-based): "your 1st referral" = #1, not global matrix slot
+    let positionAmongDirectReferrals = 0;
+    const sponsorDirectRefs = await User.find({ sponsorId }).select('_id').sort({ createdAt: 1 }).session(session);
+    const directRefIndex = sponsorDirectRefs.findIndex((r) => r._id.toString() === newUserId.toString());
+    if (directRefIndex !== -1) positionAmongDirectReferrals = directRefIndex + 1;
 
     let matrixLevel = 0;
     let matrixAmount = 0;
@@ -239,20 +244,25 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
       matrixAmount = matrixLevels[matrixLevel - 1]?.amount ?? 0;
     }
 
-    logger.info(`[EARNINGS FLOW] New referral position: ${referralPosition} (slot level ${matrixLevel}), Amount: ₦${matrixAmount}`);
-    
+    const displayPosition = positionAmongDirectReferrals > 0 ? positionAmongDirectReferrals : (newUserPosition >= 0 ? newUserPosition + 1 : 0);
+    logger.info(`[EARNINGS FLOW] New referral position: #${displayPosition} among direct refs (slot level ${matrixLevel}), Amount: ₦${matrixAmount}`);
+
     if (matrixLevel > 0 && matrixAmount > 0) {
       const sponsor = await User.findById(sponsorId).select('username').session(session);
-      const matrixDescription = isOrphanedUser
-        ? `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Orphaned Signup allocated to first user)`
-        : `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${referralPosition}, Force C - Direct Referral)`;
-      
-      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || sponsorId}: new referral at position #${referralPosition} (Level ${matrixLevel}) → ₦${matrixAmount}`);
+      // Direct referral in Level 1 = Force C; direct referral in spillover slot (Level 2+) = Force A
+      const isSpilloverSlot = newUserPosition >= 5;
+      const sponsorForceType = isOrphanedUser ? 'C' : (isSpilloverSlot ? 'A' : 'C');
+      const sponsorForceDescription = isOrphanedUser
+        ? 'Force C - Orphaned Signup allocated to first user'
+        : isSpilloverSlot
+          ? 'Force A - Spillover'
+          : 'Force C - Direct Referral';
+      const matrixDescription = `Matrix level ${matrixLevel} bonus for ${user.firstName} ${user.lastName} (position #${displayPosition}, ${sponsorForceDescription})`;
 
-      const isForceC = true;
-      
-      const sponsorDirectCount = await User.countDocuments({ 
-        sponsorId: sponsorId 
+      logger.info(`[EARNINGS FLOW] Sponsor ${sponsor?.username || sponsorId}: new referral at position #${displayPosition} (Level ${matrixLevel}, ${sponsorForceDescription}) → ₦${matrixAmount}`);
+
+      const sponsorDirectCount = await User.countDocuments({
+        sponsorId: sponsorId,
       }).session(session);
 
       const matrixEarning = await Earning.create([{
@@ -260,25 +270,32 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
         amount: matrixAmount,
         type: `MATRIX_LEVEL_${matrixLevel}`,
         description: matrixDescription,
-        metadata: { forceType: 'C', isDirectReferral: !isOrphanedUser, isOrphanedUser },
+        metadata: {
+          forceType: sponsorForceType,
+          isDirectReferral: !isOrphanedUser,
+          isSpilloverSlot,
+          isOrphanedUser,
+          positionAmongDirectReferrals: displayPosition > 0 ? displayPosition : undefined,
+        },
       }], { session });
-      
-      if (isForceC) {
+
+      // Force C always to main balance; Force A/B use 2-direct-ref rule (pending until 2 refs)
+      if (sponsorForceType === 'C') {
         await User.findByIdAndUpdate(sponsorId, {
           $inc: { balance: matrixAmount },
         }, { session });
-        logger.info(`[EARNINGS FLOW] Force C (Direct Referral) bonus added to main balance: ₦${matrixAmount}`);
+        logger.info(`[EARNINGS FLOW] ${sponsorForceDescription} bonus added to main balance: ₦${matrixAmount}`);
       } else {
         if (sponsorDirectCount >= 2) {
           await User.findByIdAndUpdate(sponsorId, {
-        $inc: { balance: matrixAmount },
-      }, { session });
-          logger.info(`[EARNINGS FLOW] Force A/B bonus added to main balance (sponsor has ${sponsorDirectCount} direct referrals)`);
+            $inc: { balance: matrixAmount },
+          }, { session });
+          logger.info(`[EARNINGS FLOW] ${sponsorForceDescription} bonus added to main balance (sponsor has ${sponsorDirectCount} direct referrals)`);
         } else {
           await User.findByIdAndUpdate(sponsorId, {
             $inc: { pendingBalance: matrixAmount },
           }, { session });
-          logger.info(`[EARNINGS FLOW] Force A/B bonus added to pending balance (sponsor has ${sponsorDirectCount} direct referrals, needs 2 to unlock)`);
+          logger.info(`[EARNINGS FLOW] ${sponsorForceDescription} bonus added to pending balance (sponsor has ${sponsorDirectCount} direct referrals, needs 2 to unlock)`);
         }
       }
       
@@ -337,6 +354,42 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
             
             logger.info(`[EARNINGS FLOW] ✓ Upline ${uplineUserId} earned ₦${uplineBonus} (Level ${uplineLevel.level})`);
             payouts.push(uplineEarning[0]);
+          }
+        }
+      }
+
+      // Slot holder bonus: the user in whose leg/column the new user was placed (e.g. first direct ref holding spillover)
+      // Only when new user is in Level 2+ (position >= 5); Level 1 slots have no separate holder from sponsor
+      if (newUserPosition >= 5) {
+        const parentPos = getParentPosition(newUserPosition);
+        if (parentPos !== null && sponsorMatrix.matrix[parentPos]) {
+          const slotHolderId = sponsorMatrix.matrix[parentPos];
+          if (slotHolderId !== newUserId.toString()) {
+            const slotHolderDirectCount = await User.countDocuments({
+              sponsorId: slotHolderId,
+            }).session(session);
+
+            const slotHolderEarning = await Earning.create([{
+              userId: slotHolderId,
+              amount: matrixAmount,
+              type: `MATRIX_LEVEL_${matrixLevel}`,
+              description: `Matrix level ${matrixLevel} bonus (slot holder) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, Force D - Spillover under your leg)`,
+              metadata: { forceType: 'D', isSlotHolder: true },
+            }], { session });
+
+            if (slotHolderDirectCount >= 2) {
+              await User.findByIdAndUpdate(slotHolderId, {
+                $inc: { balance: matrixAmount },
+              }, { session });
+              logger.info(`[EARNINGS FLOW] Force D (Slot Holder) bonus added to main balance (slot holder has ${slotHolderDirectCount} direct referrals)`);
+            } else {
+              await User.findByIdAndUpdate(slotHolderId, {
+                $inc: { pendingBalance: matrixAmount },
+              }, { session });
+              logger.info(`[EARNINGS FLOW] Force D (Slot Holder) bonus added to pending balance (slot holder has ${slotHolderDirectCount} direct referrals, needs 2 to unlock)`);
+            }
+            logger.info(`[EARNINGS FLOW] ✓ Slot holder ${slotHolderId} earned ₦${matrixAmount} (Level ${matrixLevel})`);
+            payouts.push(slotHolderEarning[0]);
           }
         }
       }

@@ -52,6 +52,13 @@ const userSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  /** Position (0-3904) in sponsor's matrix. Set at activation for spillover (6th+ direct ref); ensures first-available, first-come-first-serve, spillover never moves. */
+  matrixPositionInSponsor: {
+    type: Number,
+    default: null,
+    min: 0,
+    max: 3904,
+  },
   // Activation & Status
   couponCode: {
     type: String,
@@ -132,6 +139,8 @@ const userSchema = new mongoose.Schema({
 // Indexes
 // Note: email and username already have indexes from unique: true
 userSchema.index({ sponsorId: 1 });
+userSchema.index({ sponsorId: 1, matrixPositionInSponsor: 1 });
+userSchema.index({ matrixPositionInSponsor: 1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 });
 
 const User = mongoose.model('User', userSchema);

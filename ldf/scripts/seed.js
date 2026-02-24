@@ -36,7 +36,6 @@ async function main() {
     const saltRounds = 10;
     const defaultPassword = 'Agent123!';
     const passwordHash = await bcrypt.hash(defaultPassword, saltRounds);
-
     
     const agent = await User.create({
       firstName: 'Agent',

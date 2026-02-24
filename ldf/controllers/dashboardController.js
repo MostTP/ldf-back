@@ -413,12 +413,19 @@ export async function getReferrals(req, res) {
       .select('firstName lastName username email phone isActive subscriptionExpiresAt createdAt')
       .sort({ createdAt: -1 });
 
+    // Position among direct referrals (1-based): oldest = #1, so "your 1st referral" shows as #1
+    const directReferralsByCreatedAsc = await User.find({ sponsorId: userId })
+      .select('_id')
+      .sort({ createdAt: 1 });
+    const positionByReferralId = new Map();
+    directReferralsByCreatedAsc.forEach((r, i) => positionByReferralId.set(r._id.toString(), i + 1));
+
     // Get matrix structure to find levels
     const { getMatrixFillStatus } = await import('../services/matrixPlacementService.js');
     const { getDownlineLevel } = await import('../utils/matrixService.js');
     const matrixData = await getMatrixFillStatus(userId);
     const matrix = matrixData.matrix;
-    
+
     // Helper to get level from position
     const getLevelFromPosition = (position) => {
       if (position < 5) return 1;
@@ -433,8 +440,10 @@ export async function getReferrals(req, res) {
     const referrals = await Promise.all(
       directReferrals.map(async (referral) => {
         const referralId = referral._id.toString();
-        
-        // Find referral's position in matrix
+
+        // Position among your direct referrals (1-based): 1st referral = #1
+        const positionInReferrals = positionByReferralId.get(referralId) ?? 0;
+        // Find referral's position in matrix (for level only)
         const matrixPosition = matrix.indexOf(referralId);
         const matrixLevel = matrixPosition !== -1 ? getLevelFromPosition(matrixPosition) : 1;
         
@@ -464,6 +473,7 @@ export async function getReferrals(req, res) {
           phone: referral.phone,
           isActive, // Boolean for frontend
           createdAt: referral.createdAt, // Date for frontend
+          positionInReferrals, // 1-based: 1st direct referral = #1
           matrixLevel: `Level ${matrixLevel}`, // String format for frontend
           directDownlines, // Number
           subDaysLeft, // Number (days remaining)
@@ -740,12 +750,22 @@ export async function getEarningsHistory(req, res) {
     }
 
     const earnings = await Earning.find(query)
-      .select('_id amount type description createdAt')
+      .select('_id amount type description createdAt metadata')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .skip(parseInt(offset));
+      .skip(parseInt(offset))
+      .lean();
 
     const total = await Earning.countDocuments(query);
+
+    // Fix position in description for matrix earnings: use position among direct referrals when stored in metadata
+    const earningsWithFixedDescription = earnings.map((e) => {
+      if (!e.type || !e.type.startsWith('MATRIX_LEVEL_')) return e;
+      const pos = e.metadata?.positionAmongDirectReferrals;
+      if (pos == null || pos < 1) return e;
+      const fixedDescription = (e.description || '').replace(/\bposition\s*#\s*\d+/i, `position #${pos}`);
+      return { ...e, description: fixedDescription };
+    });
 
     // Get summary by type
     const summaryByType = await Earning.aggregate([
@@ -762,12 +782,13 @@ export async function getEarningsHistory(req, res) {
 
     res.json({
       success: true,
-      data: earnings,
+      data: earningsWithFixedDescription,
       total,
       limit: parseInt(limit),
       offset: parseInt(offset),
       summary: summaryByType,
     });
+    
   } catch (error) {
     logger.error('Get earnings history error:', error);
     res.status(500).json({
