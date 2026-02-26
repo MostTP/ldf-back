@@ -276,6 +276,8 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
           isSpilloverSlot,
           isOrphanedUser,
           positionAmongDirectReferrals: displayPosition > 0 ? displayPosition : undefined,
+          newUserId: newUserId.toString(),
+          matrixPosition: newUserPosition >= 0 ? newUserPosition + 1 : undefined,
         },
       }], { session });
 
@@ -337,7 +339,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
               amount: uplineBonus,
               type: `MATRIX_LEVEL_${uplineLevel.level}`,
               description: `Matrix level ${uplineLevel.level} bonus (upline) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, ${forceDescription})`,
-              metadata: { forceType, isDirectReferral: isUplineDirectReferral },
+              metadata: { forceType, isDirectReferral: isUplineDirectReferral, newUserId: newUserId.toString() },
             }], { session });
             
             if (uplineDirectCount >= 2) {
@@ -374,7 +376,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
               amount: matrixAmount,
               type: `MATRIX_LEVEL_${matrixLevel}`,
               description: `Matrix level ${matrixLevel} bonus (slot holder) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, Force D - Spillover under your leg)`,
-              metadata: { forceType: 'D', isSlotHolder: true },
+              metadata: { forceType: 'D', isSlotHolder: true, newUserId: newUserId.toString() },
             }], { session });
 
             if (slotHolderDirectCount >= 2) {

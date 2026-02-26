@@ -758,10 +758,66 @@ export async function getEarningsHistory(req, res) {
 
     const total = await Earning.countDocuments(query);
 
-    // Fix position in description for matrix earnings: use position among direct referrals when stored in metadata
+    // Fix position in description for matrix earnings: use current matrix position (so it reflects spillover reassignment)
+    const matrixEarnings = earnings.filter((e) => e.type?.startsWith('MATRIX_LEVEL_'));
+    const recipientIds = [...new Set(matrixEarnings.map((e) => e.userId?.toString()).filter(Boolean))];
+    const matrixByRecipient = {};
+    for (const rid of recipientIds) {
+      try {
+        const fill = await getMatrixFillStatus(rid);
+        matrixByRecipient[rid] = fill?.matrix || [];
+      } catch {
+        matrixByRecipient[rid] = [];
+      }
+    }
+    const getCurrentPosition = (recipientId, newUserId) => {
+      const matrix = matrixByRecipient[recipientId?.toString()];
+      if (!matrix || !newUserId) return null;
+      const idx = matrix.indexOf(newUserId.toString());
+      return idx >= 0 ? idx + 1 : null;
+    };
+    // For old earnings without newUserId: try to infer from "for FirstName LastName" in description and recipient's matrix
+    const nameToIds = {};
+    const allMatrixIds = [...new Set(Object.values(matrixByRecipient).flat().filter(Boolean))];
+    if (allMatrixIds.length > 0) {
+      const users = await User.find({ _id: { $in: allMatrixIds } }).select('_id firstName lastName').lean();
+      const userById = Object.fromEntries(users.map((u) => [u._id.toString(), u]));
+      for (const rid of recipientIds) {
+        const matrix = matrixByRecipient[rid] || [];
+        for (const uid of matrix) {
+          const u = userById[uid];
+          if (!u) continue;
+          const name = `${(u.firstName || '').trim()} ${(u.lastName || '').trim()}`.trim() || null;
+          if (name) {
+            if (!nameToIds[name]) nameToIds[name] = {};
+            if (!nameToIds[name][rid]) nameToIds[name][rid] = [];
+            nameToIds[name][rid].push(uid);
+          }
+        }
+      }
+    }
+    const inferNewUserIdFromDescription = (description, recipientId) => {
+      const m = (description || '').match(/for\s+([^(]+?)\s*\(\s*position/i);
+      if (!m) return null;
+      const name = m[1].trim().replace(/\s+/g, ' ');
+      const rid = recipientId?.toString();
+      const ids = nameToIds[name]?.[rid];
+      if (ids?.length === 1) return ids[0];
+      if (ids?.length > 1) return null;
+      const normalizedKeys = Object.keys(nameToIds).filter((k) => k.replace(/\s+/g, ' ') === name);
+      for (const key of normalizedKeys) {
+        const arr = nameToIds[key]?.[rid];
+        if (arr?.length === 1) return arr[0];
+      }
+      return null;
+    };
     const earningsWithFixedDescription = earnings.map((e) => {
       if (!e.type || !e.type.startsWith('MATRIX_LEVEL_')) return e;
-      const pos = e.metadata?.positionAmongDirectReferrals;
+      let newUserId = e.metadata?.newUserId;
+      if (!newUserId) newUserId = inferNewUserIdFromDescription(e.description, e.userId);
+      const pos = newUserId
+        ? getCurrentPosition(e.userId, newUserId)
+        : e.metadata?.positionAmongDirectReferrals;
       if (pos == null || pos < 1) return e;
       const fixedDescription = (e.description || '').replace(/\bposition\s*#\s*\d+/i, `position #${pos}`);
       return { ...e, description: fixedDescription };

@@ -59,20 +59,17 @@ async function getMatrixStructure(userId, session = null) {
   }
 
   const ownerId = userId.toString();
+  const l1Set = new Set(level1Users);
   for (let p = 5; p < 3905; p++) {
-    // Owner's direct ref (e.g. spillover) at position p
-    let uid = placementMap.get(`${ownerId}_${p}`);
-    if (uid) {
-      matrix[p] = uid;
-      continue;
-    }
     const parentPos = getParentPosition(p);
-    if (parentPos === null) continue;
-    const parentId = matrix[parentPos];
-    if (!parentId) continue;
-    // Parent's 5 slots = parent's matrix positions 0-4 (their direct refs), not p
-    const positionInParent = getLevelFromPosition(p).positionInLevel % 5;
-    uid = placementMap.get(`${parentId}_${positionInParent}`);
+    const positionInParent = parentPos !== null ? getLevelFromPosition(p).positionInLevel % 5 : -1;
+    const parentId = parentPos !== null && parentPos < level1Users.length ? level1Users[parentPos] : null;
+    // Prefer L1's direct ref in this slot (parent's positionInParent) so sol1 shows under Ty1; else owner's spillover at p
+    let uid = parentId ? placementMap.get(`${parentId}_${positionInParent}`) : null;
+    if (!uid) {
+      uid = placementMap.get(`${ownerId}_${p}`);
+      if (uid && l1Set.has(uid)) uid = null;
+    }
     if (uid) matrix[p] = uid;
   }
 
@@ -80,20 +77,68 @@ async function getMatrixStructure(userId, session = null) {
 }
 
 /**
- * First available position >= 5 in sponsor's matrix (for spillover). Used so spillover is first-come-first-serve and never moves.
+ * Build L1 user IDs (max 5) for a matrix owner: upline spillover first, then owner's direct refs.
+ * @param {string} ownerId - The matrix owner user ID
+ * @param {object} session - MongoDB session
+ * @returns {Promise<string[]>} Array of up to 5 user IDs in L1 order
+ */
+async function getLevel1UserIds(ownerId, session = null) {
+  let sponsorQuery = User.findById(ownerId).select('sponsorId');
+  if (session) sponsorQuery = sponsorQuery.session(session);
+  const owner = await sponsorQuery;
+  const level1Users = [];
+  if (owner && owner.sponsorId) {
+    let uplineQuery = User.find({ sponsorId: owner.sponsorId }).select('_id').sort({ createdAt: 1 });
+    if (session) uplineQuery = uplineQuery.session(session);
+    const uplineDirectReferrals = await uplineQuery;
+    const uplineSpillover = uplineDirectReferrals.slice(5);
+    for (let i = 0; i < Math.min(5, uplineSpillover.length); i++) {
+      level1Users.push(uplineSpillover[i]._id.toString());
+    }
+  }
+  let directQuery = User.find({ sponsorId: ownerId }).select('_id').sort({ createdAt: 1 });
+  if (session) directQuery = directQuery.session(session);
+  const allDirectReferrals = await directQuery;
+  const available = 5 - level1Users.length;
+  for (let i = 0; i < Math.min(available, allDirectReferrals.length); i++) {
+    level1Users.push(allDirectReferrals[i]._id.toString());
+  }
+  return level1Users;
+}
+
+/**
+ * First available position >= 5 in sponsor's matrix (for spillover). Skips positions reserved for an L1 user's direct ref
+ * so spillover never occupies the same slot as a downline's direct ref (no duplicate position).
  * @param {string} sponsorId - The sponsor user ID
  * @param {object} session - MongoDB session
- * @returns {Promise<number>} First position p >= 5 not assigned to any user with sponsorId
+ * @returns {Promise<number>} First position p >= 5 not assigned and not reserved for parent direct ref
  */
 export async function getFirstAvailableSpilloverPosition(sponsorId, session = null) {
-  let q = User.find({ sponsorId, matrixPositionInSponsor: { $gte: 5, $lte: 3904 } }).select('matrixPositionInSponsor');
-  if (session) q = q.session(session);
-  const used = await q;
-  const set = new Set(used.map((u) => u.matrixPositionInSponsor));
-  for (let p = 5; p < 3905; p++) {
-    if (!set.has(p)) return p;
+  const level1Users = await getLevel1UserIds(sponsorId, session);
+  let placementQuery = User.find({ matrixPositionInSponsor: { $ne: null } })
+    .select('_id sponsorId matrixPositionInSponsor');
+  if (session) placementQuery = placementQuery.session(session);
+  const placements = await placementQuery;
+  const placementMap = new Map();
+  for (const u of placements) {
+    const sid = u.sponsorId ? u.sponsorId.toString() : '';
+    placementMap.set(`${sid}_${u.matrixPositionInSponsor}`, u._id.toString());
   }
-  return 3905; // matrix full
+  let usedQuery = User.find({ sponsorId, matrixPositionInSponsor: { $gte: 5, $lte: 3904 } }).select('matrixPositionInSponsor');
+  if (session) usedQuery = usedQuery.session(session);
+  const usedRows = await usedQuery;
+  const used = new Set(usedRows.map((u) => u.matrixPositionInSponsor));
+  for (let p = 5; p < 3905; p++) {
+    if (used.has(p)) continue;
+    const parentPos = getParentPosition(p);
+    if (parentPos === null || parentPos >= level1Users.length) continue;
+    const parentId = level1Users[parentPos];
+    if (!parentId) continue;
+    const positionInParent = getLevelFromPosition(p).positionInLevel % 5;
+    if (placementMap.has(`${parentId}_${positionInParent}`)) continue;
+    return p;
+  }
+  return 3905;
 }
 
 /**
@@ -169,6 +214,49 @@ export async function backfillMatrixPositions(session = null) {
   }
 
   return { updated, skipped };
+}
+
+/**
+ * Reassign spillover positions for a sponsor so reserved slots (L1 direct refs) are skipped.
+ * Run once after deploying the "reserved slot" fix so existing spillover (e.g. ty6 at 5) moves to correct slots (e.g. 6).
+ * @param {string} sponsorId - The sponsor user ID
+ * @param {object} session - Optional MongoDB session
+ * @returns {Promise<number>} Number of users whose position was updated
+ */
+export async function reassignSpilloverPositionsForSponsor(sponsorId, session = null) {
+  let q = User.find({ sponsorId, matrixPositionInSponsor: { $gte: 5, $lte: 3904 } })
+    .select('_id matrixPositionInSponsor')
+    .sort({ matrixPositionInSponsor: 1 });
+  if (session) q = q.session(session);
+  const spilloverUsers = await q;
+  let updated = 0;
+  for (const u of spilloverUsers) {
+    const newPos = await getFirstAvailableSpilloverPosition(sponsorId, session);
+    if (newPos >= 3905) break;
+    const currentPos = u.matrixPositionInSponsor;
+    if (newPos !== currentPos) {
+      let updateQuery = User.findByIdAndUpdate(u._id, { matrixPositionInSponsor: newPos }, { new: true });
+      if (session) updateQuery = updateQuery.session(session);
+      await updateQuery;
+      updated++;
+    }
+  }
+  return updated;
+}
+
+/**
+ * Reassign spillover positions for all sponsors that have spillover. Run once after the reserved-slot fix.
+ * @param {object} session - Optional MongoDB session
+ * @returns {Promise<{ sponsorsProcessed: number, totalUpdated: number }>}
+ */
+export async function reassignAllSpilloverPositions(session = null) {
+  const sponsorIds = await User.distinct('sponsorId', { matrixPositionInSponsor: { $gte: 5, $lte: 3904 } });
+  let totalUpdated = 0;
+  for (const sid of sponsorIds) {
+    if (!sid) continue;
+    totalUpdated += await reassignSpilloverPositionsForSponsor(sid.toString(), session);
+  }
+  return { sponsorsProcessed: sponsorIds.filter(Boolean).length, totalUpdated };
 }
 
 /**
