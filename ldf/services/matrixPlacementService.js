@@ -437,9 +437,9 @@ async function buildTreeFromSlice(user, level1UserIds, level2ByParent, fillStatu
 
 /**
  * Get matrix tree structure for visualization (Level 1 & Level 2).
- * If the user has a sponsor, the tree is built from their slice of the sponsor's matrix
- * so spillover appears only under the L1 who earned it (not under every L1 when they log in).
- * @param {string} userId - The user ID
+ * L1 = only this user's direct referrals (no upline spillover siblings). L2 = users placed under each in the matrix.
+ * So spillover users with no directs and no one under them see an empty team.
+ * @param {string} userId - The user ID (root of the tree)
  * @param {object} session - MongoDB session
  * @returns {Promise<Object>} Tree structure with root, level1, and level2
  */
@@ -453,69 +453,27 @@ export async function getMatrixTreeStructure(userId, session = null) {
     return null;
   }
 
-  const userIdStr = user._id.toString();
-
-  // Downline view: user has a sponsor — show only their slice of sponsor's matrix (no spillover under wrong L1)
-  if (user.sponsorId) {
-    const sponsorMatrix = await getMatrixStructure(user.sponsorId, session);
-    const l1Index = sponsorMatrix.slice(0, 5).findIndex((id) => id !== null && id.toString() === userIdStr);
-    if (l1Index === -1) {
-      // User not in sponsor's L1 (shouldn't happen) — fallback to empty tree
-      return buildTreeFromSlice(user, [], {}, { totalFilled: 0, levelCounts: [0, 0, 0, 0, 0] }, session);
-    }
-
-    const level2Start = 5 + l1Index * 5;
-    const level3Start = 30 + l1Index * 25;
-
-    const level1UserIds = [];
-    const level2ByParent = {};
-    let sliceFilled = 0;
-    const levelCounts = [0, 0, 0, 0, 0];
-
-    for (let j = 0; j < 5; j++) {
-      const pos = level2Start + j;
-      const id = pos < sponsorMatrix.length && sponsorMatrix[pos] !== null ? sponsorMatrix[pos] : null;
-      if (id) {
-        level1UserIds.push(id);
-        level2ByParent[id.toString()] = [];
-        levelCounts[0]++;
-        sliceFilled++;
-        for (let k = 0; k < 5; k++) {
-          const l3Pos = level3Start + j * 5 + k;
-          if (l3Pos < sponsorMatrix.length && sponsorMatrix[l3Pos] !== null) {
-            level2ByParent[id.toString()].push(sponsorMatrix[l3Pos]);
-            levelCounts[1]++;
-            sliceFilled++;
-          }
-        }
-      }
-    }
-
-    return buildTreeFromSlice(user, level1UserIds, level2ByParent, { totalFilled: sliceFilled, levelCounts }, session);
-  }
-
-  // Root view: no sponsor — use this user's full matrix (spillover shows under correct L1 by position)
   const fillStatus = await getMatrixFillStatus(userId, session);
   const matrix = fillStatus.matrix;
 
-  const level1UserIds = [];
-  for (let i = 0; i < 5; i++) {
-    if (matrix[i] !== null) {
-      level1UserIds.push(matrix[i]);
-    }
-  }
+  // L1 for visualization = only this user's direct referrals (first 5 by createdAt), not upline spillover
+  let directRefsQuery = User.find({ sponsorId: userId }).select('_id').sort({ createdAt: 1 }).limit(5);
+  if (session) directRefsQuery = directRefsQuery.session(session);
+  const directRefs = await directRefsQuery;
+  const level1UserIds = directRefs.map((r) => r._id.toString());
 
+  // L2 = for each direct ref, the 5 slots under them in the matrix (by parent position)
   const level2ByParent = {};
-  const level2Position = 5;
-  for (let i = 0; i < level1UserIds.length; i++) {
-    const parentId = level1UserIds[i];
-    const parentIdStr = parentId.toString();
-    level2ByParent[parentIdStr] = [];
-    for (let j = 0; j < 5; j++) {
-      const pos = level2Position + (i * 5) + j;
-      if (pos < matrix.length && matrix[pos] !== null) {
-        level2ByParent[parentIdStr].push(matrix[pos]);
-      }
+  for (const lid of level1UserIds) {
+    level2ByParent[lid] = [];
+  }
+  for (let p = 5; p < 30; p++) {
+    const parentPos = getParentPosition(p);
+    if (parentPos === null) continue;
+    const parentId = parentPos < matrix.length ? matrix[parentPos] : null;
+    if (!parentId || !level2ByParent[parentId]) continue;
+    if (matrix[p] && level2ByParent[parentId].length < 5) {
+      level2ByParent[parentId].push(matrix[p]);
     }
   }
 

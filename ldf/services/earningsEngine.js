@@ -334,12 +334,13 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
             const forceType = isUplineDirectReferral ? 'A' : 'B';
             const forceDescription = forceType === 'A' ? 'Force A - Spillover' : 'Force B - Spill-Under';
             
+            const uplineMatrixPosition = newUserPosition + 1;
             const uplineEarning = await Earning.create([{
               userId: uplineUserId,
               amount: uplineBonus,
               type: `MATRIX_LEVEL_${uplineLevel.level}`,
-              description: `Matrix level ${uplineLevel.level} bonus (upline) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, ${forceDescription})`,
-              metadata: { forceType, isDirectReferral: isUplineDirectReferral, newUserId: newUserId.toString() },
+              description: `Matrix level ${uplineLevel.level} bonus (upline) for ${user.firstName} ${user.lastName} (position #${uplineMatrixPosition}, ${forceDescription})`,
+              metadata: { forceType, isDirectReferral: isUplineDirectReferral, newUserId: newUserId.toString(), matrixPosition: uplineMatrixPosition },
             }], { session });
             
             if (uplineDirectCount >= 2) {
@@ -362,6 +363,7 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
 
       // Slot holder bonus: the user in whose leg/column the new user was placed (e.g. first direct ref holding spillover)
       // Only when new user is in Level 2+ (position >= 5); Level 1 slots have no separate holder from sponsor
+      // Position shown = ordinal in slot holder's leg (1st, 2nd, 3rd, 4th, 5th under them), not global matrix position
       if (newUserPosition >= 5) {
         const parentPos = getParentPosition(newUserPosition);
         if (parentPos !== null && sponsorMatrix.matrix[parentPos]) {
@@ -371,12 +373,15 @@ export async function triggerActivationPayouts(newUserId, activationAmount = 50,
               sponsorId: slotHolderId,
             }).session(session);
 
+            const level2Start = 5 + parentPos * 5;
+            const positionInLeg = (newUserPosition - level2Start) + 1;
+
             const slotHolderEarning = await Earning.create([{
               userId: slotHolderId,
               amount: matrixAmount,
               type: `MATRIX_LEVEL_${matrixLevel}`,
-              description: `Matrix level ${matrixLevel} bonus (slot holder) for ${user.firstName} ${user.lastName} (position #${newUserPosition + 1}, Force D - Spillover under your leg)`,
-              metadata: { forceType: 'D', isSlotHolder: true, newUserId: newUserId.toString() },
+              description: `Matrix level ${matrixLevel} bonus (slot holder) for ${user.firstName} ${user.lastName} (position #${positionInLeg}, Force D - Spillover under your leg)`,
+              metadata: { forceType: 'D', isSlotHolder: true, newUserId: newUserId.toString(), positionInLeg },
             }], { session });
 
             if (slotHolderDirectCount >= 2) {

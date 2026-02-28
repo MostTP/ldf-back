@@ -139,7 +139,7 @@ const userSchema = new mongoose.Schema({
 // Indexes
 // Note: email and username already have indexes from unique: true
 userSchema.index({ sponsorId: 1 });
-userSchema.index({ sponsorId: 1, matrixPositionInSponsor: 1 });
+userSchema.index({ sponsorId: 1, matrixPositionInSponsor: 1 }, { unique: true, sparse: true });
 userSchema.index({ matrixPositionInSponsor: 1 }, { sparse: true });
 userSchema.index({ emailVerificationToken: 1 });
 

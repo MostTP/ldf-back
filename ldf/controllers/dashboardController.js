@@ -811,13 +811,60 @@ export async function getEarningsHistory(req, res) {
       }
       return null;
     };
+    const isForceD = (e) =>
+      e.metadata?.isSlotHolder === true ||
+      e.metadata?.forceType === 'D' ||
+      (e.description && /slot holder|Force D/i.test(e.description));
+    const slotHolderEarningsNeedingLegPos = earnings.filter(
+      (e) => e.type?.startsWith('MATRIX_LEVEL_') && isForceD(e) && (e.metadata?.positionInLeg == null || e.metadata?.positionInLeg < 1)
+    );
+    const slotHolderIdsForLeg = [...new Set(slotHolderEarningsNeedingLegPos.map((e) => e.userId?.toString()).filter(Boolean))];
+    const sponsorMatrixBySlotHolderId = {};
+    for (const sid of slotHolderIdsForLeg) {
+      try {
+        const slotHolder = await User.findById(sid).select('sponsorId').lean();
+        const sponsorId = slotHolder?.sponsorId?.toString();
+        if (sponsorId) {
+          const fill = await getMatrixFillStatus(sponsorId);
+          sponsorMatrixBySlotHolderId[sid] = fill?.matrix || [];
+        }
+      } catch {
+        sponsorMatrixBySlotHolderId[sid] = [];
+      }
+    }
+    const getPositionInLeg = (slotHolderId, newUserId) => {
+      const matrix = sponsorMatrixBySlotHolderId[slotHolderId?.toString()];
+      if (!matrix || !newUserId) return null;
+      const slotHolderStr = slotHolderId?.toString();
+      const newUserStr = newUserId.toString();
+      const slotHolderL1Index = matrix.slice(0, 5).findIndex((id) => (id || '').toString() === slotHolderStr);
+      if (slotHolderL1Index < 0) return null;
+      const newUserPosition = matrix.indexOf(newUserStr);
+      if (newUserPosition < 5) return null;
+      const level2Start = 5 + slotHolderL1Index * 5;
+      const level2End = level2Start + 5;
+      if (newUserPosition < level2Start || newUserPosition >= level2End) return null;
+      return (newUserPosition - level2Start) + 1;
+    };
     const earningsWithFixedDescription = earnings.map((e) => {
       if (!e.type || !e.type.startsWith('MATRIX_LEVEL_')) return e;
-      let newUserId = e.metadata?.newUserId;
-      if (!newUserId) newUserId = inferNewUserIdFromDescription(e.description, e.userId);
-      const pos = newUserId
-        ? getCurrentPosition(e.userId, newUserId)
-        : e.metadata?.positionAmongDirectReferrals;
+      const forceD = isForceD(e);
+      let pos = null;
+      if (forceD) {
+        pos = e.metadata?.positionInLeg;
+        if (pos == null || pos < 1) {
+          const newUserId = e.metadata?.newUserId || inferNewUserIdFromDescription(e.description, e.userId);
+          pos = newUserId ? getPositionInLeg(e.userId, newUserId) : null;
+        }
+      }
+      if (pos == null && !forceD) {
+        const storedPos = e.metadata?.matrixPosition;
+        if (storedPos != null && storedPos >= 1 && storedPos <= 3905) pos = storedPos;
+      }
+      if (pos == null && !forceD) {
+        const newUserId = e.metadata?.newUserId || inferNewUserIdFromDescription(e.description, e.userId);
+        pos = newUserId ? getCurrentPosition(e.userId, newUserId) : e.metadata?.positionAmongDirectReferrals;
+      }
       if (pos == null || pos < 1) return e;
       const fixedDescription = (e.description || '').replace(/\bposition\s*#\s*\d+/i, `position #${pos}`);
       return { ...e, description: fixedDescription };
