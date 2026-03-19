@@ -12,6 +12,9 @@ const envSchema = z.object({
   MEMBER_FRONTEND_URL: z.string().url().optional().or(z.literal('')),
   ADMIN_HMAC_SECRET: z.string().optional().or(z.literal('')),
   ADMIN_IP_WHITELIST: z.string().optional().or(z.literal('')),
+  // Optional: where redirected commissions go (Rule-of-2 gaps, subscription expired).
+  ADMIN_WALLET_USER_ID: z.string().uuid().optional().or(z.literal('')),
+  DISBURSEMENT_PROVIDER: z.enum(['auto', 'paystack', 'flutterwave']).optional().or(z.literal('')),
 });
 
 const DEFAULT_ORIGINS = ['http://localhost:5173', 'http://localhost:5174'];

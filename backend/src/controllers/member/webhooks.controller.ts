@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { knexInstance } from '../../config/db.js';
 import { completeActivation } from '../../services/activation.service.js';
 import { insertNotification } from '../../services/notification.service.js';
+import { completeSubscriptionPayment } from './subscription.controller.js';
+import { completeAgentCouponCreditPayment } from '../../services/agentCouponCredits.service.js';
 
 function verifyPaystackSignature(payload: string, signature: string, secret: string): boolean {
   const hash = crypto.createHmac('sha512', secret).update(payload).digest('hex');
@@ -47,6 +49,14 @@ export async function paystackWebhook(req: Request, res: Response): Promise<void
           }
         }
       }
+
+      // Subscription renewals/upgrades
+      await completeSubscriptionPayment(ref, 'paystack');
+
+      // Agent coupon credit purchases
+      await knexInstance.transaction(async (trx) => {
+        await completeAgentCouponCreditPayment(ref, 'paystack', trx);
+      });
     }
 
     if (event === 'transfer.success' && data?.reference) {
@@ -118,6 +128,14 @@ export async function flutterwaveWebhook(req: Request, res: Response): Promise<v
           }
         }
       }
+
+      // Subscription renewals/upgrades
+      await completeSubscriptionPayment(ref, 'flutterwave');
+
+      // Agent coupon credit purchases
+      await knexInstance.transaction(async (trx) => {
+        await completeAgentCouponCreditPayment(ref, 'flutterwave', trx);
+      });
     }
 
     if (event === 'transfer.completed' && data?.reference) {

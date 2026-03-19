@@ -17,6 +17,10 @@ const updateSchema = z.object({
   accountNumber: z.string().optional(),
   accountName: z.string().optional(),
   currency: z.enum(['NGN', 'GHS', 'KES', 'ZAR']).optional(),
+  cashbackEnabled: z.boolean().optional(),
+  cashbackPackage: z.enum(['S', 'G', 'both']).optional(),
+  cashbackType: z.enum(['reg', 'upgrade', 'monthly', 'all']).optional(),
+  cashbackPercentage: z.union([z.literal(10), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]).optional(),
 });
 
 router.get('/', authenticateMemberJWT, getProfile);

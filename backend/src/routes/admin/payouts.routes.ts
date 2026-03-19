@@ -4,6 +4,7 @@ import {
   listPending,
   approve,
   batchApprove,
+  executeQueued,
   reject,
   auditLog,
   listInvestments,
@@ -49,6 +50,13 @@ router.post(
   requireRole('SuperAdmin', 'FinanceManager'),
   validate(batchApproveSchema),
   batchApprove
+);
+
+router.post(
+  '/execute',
+  authenticateJWT,
+  requireRole('SuperAdmin', 'FinanceManager'),
+  executeQueued
 );
 
 router.post(

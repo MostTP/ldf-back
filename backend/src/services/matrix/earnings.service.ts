@@ -1,15 +1,6 @@
 import type { Knex } from 'knex';
-
-const MATRIX_COMMISSION_RATES: Record<number, number> = {
-  1: 500,
-  2: 300,
-  3: 200,
-  4: 100,
-  5: 50,
-};
-
-/** Gap multiple: when parent is Silver and new member is Gold, parent gets Silver rate, rest to lost_earnings. */
-const GAP_MULTIPLE = 3;
+import { getRegistrationMatrixRates } from '../../config/fees.js';
+import { creditAdminWallet, isRecipientActiveForCommissions } from '../subscriptionGuard.service.js';
 
 export async function calculateMatrixEarnings(
   newUserId: string,
@@ -18,18 +9,31 @@ export async function calculateMatrixEarnings(
 ): Promise<void> {
   const newMember = await trx('users').where({ id: newUserId }).first('package_type');
   const newMemberPackage = ((newMember as { package_type?: string } | undefined)?.package_type ?? 'Silver') as 'Silver' | 'Gold';
+  const silverRates = getRegistrationMatrixRates('Silver');
+  const goldRates = getRegistrationMatrixRates('Gold');
 
   let currentId: string | null = parentId;
   let depth = 1;
 
   while (currentId && depth <= 5) {
-    const parentUser = await trx('users').where({ id: currentId }).first('package_type');
+    const parentUser = await trx('users')
+      .where({ id: currentId })
+      .first('package_type', 'status', 'subscription_active', 'subscription_expires_at');
     const parentPackage = ((parentUser as { package_type?: string } | undefined)?.package_type ?? 'Silver') as 'Silver' | 'Gold';
+    const eligible = isRecipientActiveForCommissions({
+      status: (parentUser as { status?: string } | undefined)?.status ?? 'active',
+      subscriptionActive: (parentUser as { subscription_active?: boolean } | undefined)?.subscription_active,
+      subscriptionExpiresAt: (parentUser as { subscription_expires_at?: string } | undefined)?.subscription_expires_at ?? null,
+    });
 
-    const silverRate = MATRIX_COMMISSION_RATES[depth];
+    const silverRate = silverRates[depth - 1] ?? 0;
+    const goldRate = goldRates[depth - 1] ?? 0;
     const isGap = parentPackage === 'Silver' && newMemberPackage === 'Gold';
-    const matrixAmount = isGap ? silverRate : silverRate;
-    const lostAmount = isGap ? silverRate * GAP_MULTIPLE : 0;
+    const baseAmount = isGap ? silverRate : (newMemberPackage === 'Gold' ? goldRate : silverRate);
+    const gapAmount = isGap ? Math.max(0, goldRate - silverRate) : 0;
+
+    const matrixAmount = eligible ? baseAmount : 0;
+    const lostAmount = eligible ? gapAmount : baseAmount + gapAmount;
 
     await trx('earnings_ledger').insert({
       user_id: currentId,
@@ -46,7 +50,17 @@ export async function calculateMatrixEarnings(
         amount: lostAmount,
         source_user_id: newUserId,
         level: depth,
-        description: `Matrix L${depth} gap (Silver parent, Gold member)`,
+        description: eligible ? `Matrix L${depth} gap (Silver parent, Gold member)` : `Matrix L${depth} commission redirected (inactive/expired)`,
+      });
+
+      // Redirect to Admin Wallet (if configured) for gaps and inactive recipients.
+      await creditAdminWallet({
+        amount: lostAmount,
+        type: 'MATRIX',
+        sourceUserId: newUserId,
+        level: depth,
+        description: eligible ? `Matrix L${depth} tier gap redirected` : `Matrix L${depth} redirected (inactive/expired)`,
+        trx,
       });
     }
 
@@ -65,8 +79,10 @@ export async function calculateMatrixEarnings(
       }
     }
 
-    const parent = await trx('matrix_nodes').where({ user_id: currentId }).first('parent_id');
-    currentId = parent?.parent_id ?? null;
+    const parentRow = (await trx('matrix_nodes').where({ user_id: currentId }).first('parent_id')) as
+      | { parent_id?: string | null }
+      | undefined;
+    currentId = parentRow?.parent_id ?? null;
     depth++;
   }
 }

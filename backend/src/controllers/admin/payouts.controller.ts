@@ -7,9 +7,37 @@ import { initiateTransfer as flutterwaveTransfer } from '../../services/payment/
 
 const DETTY_PERCENT = 10; // 10% of withdrawal to Detty December
 const ALLOWED_PAYOUT_DAYS = [3, 5]; // Wednesday = 3, Friday = 5
+const MAX_EXECUTE_BATCH = 50;
 
 function isPayoutDay(): boolean {
   return ALLOWED_PAYOUT_DAYS.includes(new Date().getDay());
+}
+
+function getDisbursementProvider(): 'paystack' | 'flutterwave' | 'auto' {
+  const v = String(process.env.DISBURSEMENT_PROVIDER ?? 'auto').toLowerCase();
+  if (v === 'paystack' || v === 'flutterwave') return v;
+  return 'auto';
+}
+
+async function executeGatewayTransfer(args: {
+  provider: 'paystack' | 'flutterwave' | 'auto';
+  amountToBank: number;
+  currency: string;
+  bankCode: string;
+  accountNumber: string;
+}): Promise<{ gatewayRef: string }> {
+  const { provider, amountToBank, currency, bankCode, accountNumber } = args;
+
+  if (provider === 'paystack' || (provider === 'auto' && currency === 'NGN')) {
+    const result = await paystackTransfer({ amount: amountToBank, bankCode, accountNumber });
+    if (!result.success || !result.reference) throw new Error('Paystack transfer failed');
+    return { gatewayRef: result.reference };
+  }
+
+  // Flutterwave supports multiple currencies; allow NGN too when configured.
+  const result = await flutterwaveTransfer({ amount: amountToBank, currency, bankCode, accountNumber });
+  if (!result.success || !result.reference) throw new Error('Flutterwave transfer failed');
+  return { gatewayRef: result.reference };
 }
 
 export async function listPending(req: Request, res: Response): Promise<void> {
@@ -58,10 +86,6 @@ export async function listPending(req: Request, res: Response): Promise<void> {
 }
 
 export async function approve(req: Request, res: Response): Promise<void> {
-  if (!isPayoutDay()) {
-    res.status(403).json({ error: 'Withdrawals are only processed on Wednesdays and Fridays' });
-    return;
-  }
   const { id } = req.params;
   const adminId = req.admin!.id;
   const ipAddress = req.ip ?? req.socket?.remoteAddress ?? undefined;
@@ -76,49 +100,14 @@ export async function approve(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const amount = Number(withdrawal.amount);
-  const amountToBank = Math.round(amount * (1 - DETTY_PERCENT / 100) * 100) / 100;
-  const dettyAmount = Math.round(amount * (DETTY_PERCENT / 100) * 100) / 100;
-  const userId = withdrawal.user_id as string;
-  const currency = withdrawal.currency as string;
-  const bankCode = withdrawal.bank_code as string;
-  const accountNumber = withdrawal.account_number as string;
-
-  let gatewayRef = '';
   try {
     await knexInstance.transaction(async (trx) => {
-      await trx('withdrawal_requests')
-        .where({ id })
-        .update({ status: 'processing', processed_by: adminId });
+      // Re-check inside trx for correct status before moving to processing
+      const current = await trx('withdrawal_requests').where({ id }).first('status');
+      if (!current) throw new Error('NOT_FOUND');
+      if ((current as { status: string }).status !== 'pending') throw new Error('NOT_PENDING');
 
-      if (currency === 'NGN') {
-        const result = await paystackTransfer({ amount: amountToBank, bankCode, accountNumber });
-        if (!result.success || !result.reference) throw new Error('Paystack transfer failed');
-        gatewayRef = result.reference;
-      } else if (['GHS', 'KES', 'ZAR'].includes(currency)) {
-        const result = await flutterwaveTransfer({
-          amount: amountToBank,
-          currency,
-          bankCode,
-          accountNumber,
-        });
-        if (!result.success || !result.reference) throw new Error('Flutterwave transfer failed');
-        gatewayRef = result.reference;
-      } else {
-        throw new Error(`Unsupported currency: ${currency}`);
-      }
-
-      if (dettyAmount > 0 && (await trx.schema.hasTable('wallets'))) {
-        await trx('wallets').where({ user_id: userId }).increment('detty_december', dettyAmount);
-      }
-
-      await trx('withdrawal_requests')
-        .where({ id })
-        .update({
-          status: 'completed',
-          gateway_ref: gatewayRef,
-          processed_at: trx.fn.now(),
-        });
+      await trx('withdrawal_requests').where({ id }).update({ status: 'processing', processed_by: adminId });
 
       await writeAuditLog(
         {
@@ -126,40 +115,29 @@ export async function approve(req: Request, res: Response): Promise<void> {
           actionType: 'APPROVE_WITHDRAWAL',
           targetEntity: 'withdrawal_requests',
           targetId: id,
-          payloadSnapshot: { withdrawalId: id, gatewayRef, amount, amountToBank, dettyAmount, currency },
+          payloadSnapshot: { withdrawalId: id, status: 'processing' },
           ipAddress,
         },
         trx
       );
-
-      await insertNotification(
-        userId,
-        'WITHDRAWAL_COMPLETED',
-        'Withdrawal completed',
-        `₦${amountToBank.toLocaleString()} sent to your bank. ₦${dettyAmount.toLocaleString()} added to Detty December.`,
-        { amountToBank, dettyAmount, gatewayRef },
-        trx
-      );
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Transfer failed';
-    res.status(502).json({ error: message });
-    return;
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'NOT_FOUND') {
+      res.status(404).json({ error: 'Withdrawal not found' });
+      return;
+    }
+    if (msg === 'NOT_PENDING') {
+      res.status(409).json({ error: 'Withdrawal is not pending' });
+      return;
+    }
+    throw err;
   }
 
-  res.status(200).json({
-    message: 'Withdrawal approved',
-    gatewayRef,
-    amountToBank,
-    dettyAmount,
-  });
+  res.status(202).json({ message: 'Withdrawal queued for execution', id });
 }
 
 export async function batchApprove(req: Request, res: Response): Promise<void> {
-  if (!isPayoutDay()) {
-    res.status(403).json({ error: 'Withdrawals are only processed on Wednesdays and Fridays' });
-    return;
-  }
   const ids = (req.body as { ids?: string[] }).ids;
   if (!Array.isArray(ids) || ids.length === 0) {
     res.status(400).json({ error: 'ids must be a non-empty array of withdrawal request IDs' });
@@ -167,7 +145,7 @@ export async function batchApprove(req: Request, res: Response): Promise<void> {
   }
   const maxBatch = 50;
   const toProcess = ids.slice(0, maxBatch).filter((id) => typeof id === 'string');
-  const processed: { id: string; gatewayRef: string; amountToBank: number; dettyAmount: number }[] = [];
+  const processed: { id: string }[] = [];
   const failed: { id: string; error: string }[] = [];
 
   for (const id of toProcess) {
@@ -180,47 +158,14 @@ export async function batchApprove(req: Request, res: Response): Promise<void> {
       failed.push({ id, error: 'Not pending' });
       continue;
     }
-    const amount = Number(withdrawal.amount);
-    const amountToBank = Math.round(amount * (1 - DETTY_PERCENT / 100) * 100) / 100;
-    const dettyAmount = Math.round(amount * (DETTY_PERCENT / 100) * 100) / 100;
-    const userId = withdrawal.user_id as string;
-    const currency = withdrawal.currency as string;
-    const bankCode = withdrawal.bank_code as string;
-    const accountNumber = withdrawal.account_number as string;
     const adminId = req.admin!.id;
     const ipAddress = req.ip ?? req.socket?.remoteAddress ?? undefined;
 
     try {
-      let gatewayRef = '';
       await knexInstance.transaction(async (trx) => {
         await trx('withdrawal_requests')
           .where({ id })
           .update({ status: 'processing', processed_by: adminId });
-
-        if (currency === 'NGN') {
-          const result = await paystackTransfer({ amount: amountToBank, bankCode, accountNumber });
-          if (!result.success || !result.reference) throw new Error('Paystack transfer failed');
-          gatewayRef = result.reference;
-        } else if (['GHS', 'KES', 'ZAR'].includes(currency)) {
-          const result = await flutterwaveTransfer({
-            amount: amountToBank,
-            currency,
-            bankCode,
-            accountNumber,
-          });
-          if (!result.success || !result.reference) throw new Error('Flutterwave transfer failed');
-          gatewayRef = result.reference;
-        } else {
-          throw new Error(`Unsupported currency: ${currency}`);
-        }
-
-        if (dettyAmount > 0 && (await trx.schema.hasTable('wallets'))) {
-          await trx('wallets').where({ user_id: userId }).increment('detty_december', dettyAmount);
-        }
-
-        await trx('withdrawal_requests')
-          .where({ id })
-          .update({ status: 'completed', gateway_ref: gatewayRef, processed_at: trx.fn.now() });
 
         await writeAuditLog(
           {
@@ -228,7 +173,92 @@ export async function batchApprove(req: Request, res: Response): Promise<void> {
             actionType: 'APPROVE_WITHDRAWAL',
             targetEntity: 'withdrawal_requests',
             targetId: id,
-            payloadSnapshot: { withdrawalId: id, gatewayRef, amount, amountToBank, dettyAmount, currency },
+            payloadSnapshot: { withdrawalId: id, status: 'processing' },
+            ipAddress,
+          },
+          trx
+        );
+      });
+      processed.push({ id });
+    } catch (err) {
+      failed.push({ id, error: err instanceof Error ? err.message : 'Transfer failed' });
+    }
+  }
+
+  res.status(200).json({
+    message: `Queued ${processed.length}, failed ${failed.length}`,
+    processed,
+    failed,
+  });
+}
+
+export async function executeQueued(req: Request, res: Response): Promise<void> {
+  if (!isPayoutDay()) {
+    res.status(403).json({ error: 'Withdrawals are only processed on Wednesdays and Fridays' });
+    return;
+  }
+
+  const limitRaw = req.query.limit != null ? Number(req.query.limit) : 20;
+  const limit = Math.min(MAX_EXECUTE_BATCH, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 20));
+  const currency = (req.query.currency as string | undefined) ?? undefined;
+  const provider = getDisbursementProvider();
+  const adminId = req.admin!.id;
+  const ipAddress = req.ip ?? req.socket?.remoteAddress ?? undefined;
+
+  let qb = knexInstance('withdrawal_requests').where({ status: 'processing' });
+  if (currency) qb = qb.andWhere('currency', currency);
+
+  const rows = await qb
+    .select('id', 'user_id', 'amount', 'currency', 'bank_code', 'account_number')
+    .orderBy('created_at', 'asc')
+    .limit(limit);
+
+  const processed: { id: string; gatewayRef: string }[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  for (const w of rows as any[]) {
+    const id = String(w.id);
+    const userId = String(w.user_id);
+    const amount = Number(w.amount);
+    const currencyVal = String(w.currency);
+    const bankCode = String(w.bank_code);
+    const accountNumber = String(w.account_number);
+
+    const amountToBank = Math.round(amount * (1 - DETTY_PERCENT / 100) * 100) / 100;
+    const dettyAmount = Math.round(amount * (DETTY_PERCENT / 100) * 100) / 100;
+
+    try {
+      const { gatewayRef } = await executeGatewayTransfer({
+        provider,
+        amountToBank,
+        currency: currencyVal,
+        bankCode,
+        accountNumber,
+      });
+
+      await knexInstance.transaction(async (trx) => {
+        const current = await trx('withdrawal_requests').where({ id }).first('status');
+        if (!current || (current as { status: string }).status !== 'processing') return;
+
+        if (dettyAmount > 0 && (await trx.schema.hasTable('wallets'))) {
+          await trx('wallets').where({ user_id: userId }).increment('detty_december', dettyAmount);
+        }
+
+        await trx('withdrawal_requests')
+          .where({ id })
+          .update({
+            status: 'completed',
+            gateway_ref: gatewayRef,
+            processed_at: trx.fn.now(),
+          });
+
+        await writeAuditLog(
+          {
+            adminId,
+            actionType: 'EXECUTE_WITHDRAWAL',
+            targetEntity: 'withdrawal_requests',
+            targetId: id,
+            payloadSnapshot: { withdrawalId: id, gatewayRef, amount, amountToBank, dettyAmount, currency: currencyVal },
             ipAddress,
           },
           trx
@@ -238,19 +268,39 @@ export async function batchApprove(req: Request, res: Response): Promise<void> {
           userId,
           'WITHDRAWAL_COMPLETED',
           'Withdrawal completed',
-          `${amountToBank.toLocaleString()} sent to your bank. ${dettyAmount.toLocaleString()} added to Detty December.`,
+          `₦${amountToBank.toLocaleString()} sent to your bank. ₦${dettyAmount.toLocaleString()} added to Detty December.`,
           { amountToBank, dettyAmount, gatewayRef },
           trx
         );
       });
-      processed.push({ id, gatewayRef, amountToBank, dettyAmount });
+
+      processed.push({ id, gatewayRef });
     } catch (err) {
-      failed.push({ id, error: err instanceof Error ? err.message : 'Transfer failed' });
+      const error = err instanceof Error ? err.message : 'Transfer failed';
+      failed.push({ id, error });
+
+      await knexInstance.transaction(async (trx) => {
+        const current = await trx('withdrawal_requests').where({ id }).first('status');
+        if (!current || (current as { status: string }).status !== 'processing') return;
+
+        await trx('withdrawal_requests').where({ id }).update({ status: 'pending' });
+        await writeAuditLog(
+          {
+            adminId,
+            actionType: 'EXECUTE_WITHDRAWAL_FAILED',
+            targetEntity: 'withdrawal_requests',
+            targetId: id,
+            payloadSnapshot: { withdrawalId: id, error },
+            ipAddress,
+          },
+          trx
+        );
+      });
     }
   }
 
   res.status(200).json({
-    message: `Processed ${processed.length}, failed ${failed.length}`,
+    message: `Executed ${processed.length}, failed ${failed.length}`,
     processed,
     failed,
   });

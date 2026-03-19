@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getSummary, getLedger, getBalance } from '../../controllers/member/earnings.controller.js';
+import { getSummary, getLedger, getBalance, getGrowth } from '../../controllers/member/earnings.controller.js';
 import { authenticateMemberJWT } from '../../middleware/authenticateMemberJWT.js';
 
 const router = Router();
@@ -8,5 +8,6 @@ const router = Router();
 router.get('/summary', authenticateMemberJWT, getSummary);
 router.get('/ledger', authenticateMemberJWT, getLedger);
 router.get('/balance', authenticateMemberJWT, getBalance);
+router.get('/growth', authenticateMemberJWT, getGrowth);
 
 export default router;

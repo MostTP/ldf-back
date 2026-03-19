@@ -22,7 +22,10 @@ import memberMasterclassRoutes from './routes/member/masterclass.routes.js';
 import memberWebhooksRoutes from './routes/member/webhooks.routes.js';
 import memberWalletRoutes from './routes/member/wallet.routes.js';
 import memberAdsenseRoutes from './routes/member/adsense.routes.js';
+import memberSubscriptionRoutes from './routes/member/subscription.routes.js';
 import { adminSecurity } from './middleware/adminSecurity.js';
+import { startSubscriptionSweepCron } from './services/scheduler/subscriptionSweep.job.js';
+import { startSubscriptionNotificationCron } from './services/scheduler/subscriptionNotifications.job.js';
 
 const app = express();
 
@@ -69,6 +72,7 @@ app.use('/api/member/masterclass', memberMasterclassRoutes);
 app.use('/api/member/webhooks', memberWebhooksRoutes);
 app.use('/api/member/wallet', memberWalletRoutes);
 app.use('/api/member/adsense', memberAdsenseRoutes);
+app.use('/api/member/subscription', memberSubscriptionRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/admin/users', usersRoutes);
 app.use('/api/admin/payouts', payoutsRoutes);
@@ -93,6 +97,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 export { app };
 
 if (process.env.NODE_ENV !== 'test') {
+  startSubscriptionSweepCron();
+  startSubscriptionNotificationCron();
   app.listen(env.PORT, () => {
     console.log(`LDF API listening on port ${env.PORT}`);
   });

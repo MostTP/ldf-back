@@ -50,7 +50,9 @@ export async function register(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: 'Activation coupon is required' });
     return;
   }
-  const coupon = await knexInstance('coupons').where('code', couponNorm).first('id', 'used_by');
+  const hasPackageTypeCol = await knexInstance.schema.hasColumn('coupons', 'package_type');
+  const couponSelect = hasPackageTypeCol ? ['id', 'used_by', 'package_type'] : ['id', 'used_by'];
+  const coupon = await knexInstance('coupons').where('code', couponNorm).first(couponSelect);
   if (!coupon) {
     res.status(400).json({ error: 'Invalid coupon code' });
     return;
@@ -59,6 +61,8 @@ export async function register(req: Request, res: Response): Promise<void> {
     res.status(409).json({ error: 'Coupon already used' });
     return;
   }
+  const pkg = hasPackageTypeCol && (coupon as { package_type?: string }).package_type;
+  const packageType: 'Silver' | 'Gold' = pkg === 'Gold' || pkg === 'Silver' ? pkg : 'Silver';
 
   if (!resolvedReferrerId) {
     res.status(400).json({ error: 'Referral (sponsor) is required' });
@@ -90,7 +94,7 @@ export async function register(req: Request, res: Response): Promise<void> {
         await trx('wallets').insert({ user_id: newUserId });
       }
       await coreActivation(
-        { userId: newUserId, sponsorId: resolvedReferrerId, couponId, packageType: 'Silver' },
+        { userId: newUserId, sponsorId: resolvedReferrerId, couponId, packageType },
         trx
       );
       return newUserId;

@@ -73,3 +73,24 @@ export async function getBalance(req: Request, res: Response): Promise<void> {
     withdrawableBalance,
   });
 }
+
+export async function getGrowth(req: Request, res: Response): Promise<void> {
+  const id = req.member!.id;
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+
+  // Aggregate earnings per day over the last N days.
+  const rows = await knexInstance('earnings_ledger')
+    .where({ user_id: id })
+    .andWhere('created_at', '>=', knexInstance.raw('NOW() - INTERVAL ? DAY', [days - 1]))
+    .select(knexInstance.raw('DATE(created_at) as day'))
+    .sum('amount as total')
+    .groupByRaw('DATE(created_at)')
+    .orderBy('day', 'asc');
+
+  const data = (rows as { day: string; total: string }[]).map((r) => ({
+    day: r.day,
+    total: Number(r.total ?? 0),
+  }));
+
+  res.json({ days, data });
+}

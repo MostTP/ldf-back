@@ -1,7 +1,6 @@
 import type { Request, Response } from 'express';
 import { knexInstance } from '../../config/db.js';
-
-const ACTIVATION_AMOUNT = 3000;
+import { getRegistrationAmount } from '../../config/fees.js';
 
 export async function validateCoupon(req: Request, res: Response): Promise<void> {
   const { code } = req.body as { code: string };
@@ -9,21 +8,25 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
     res.status(400).json({ error: 'Code is required' });
     return;
   }
+  const hasPackageType = await knexInstance.schema.hasColumn('coupons', 'package_type');
+  const selectCols = ['c.id', 'c.used_by', 'u.username as agent_name'];
+  if (hasPackageType) selectCols.push('c.package_type');
   const coupon = await knexInstance('coupons as c')
     .join('users as u', 'c.agent_id', 'u.id')
     .where('c.code', code.trim().toUpperCase())
-    .select('c.id', 'c.used_by', 'u.username as agent_name')
+    .select(selectCols)
     .first();
   if (!coupon) {
     res.status(400).json({ error: 'Invalid coupon code' });
     return;
   }
-  const c = coupon as { used_by: string | null; agent_name: string };
+  const c = coupon as { used_by: string | null; agent_name: string; package_type?: string };
   if (c.used_by) {
     res.status(409).json({ error: 'Coupon already used' });
     return;
   }
-  res.json({ valid: true, agentName: c.agent_name });
+  const packageType = hasPackageType && (c.package_type === 'Silver' || c.package_type === 'Gold') ? c.package_type : 'Silver';
+  res.json({ valid: true, agentName: c.agent_name, packageType });
 }
 
 const PACKAGE_GATEWAY: Record<string, 'paystack' | 'flutterwave'> = {
@@ -34,17 +37,6 @@ const PACKAGE_GATEWAY: Record<string, 'paystack' | 'flutterwave'> = {
 export async function initiateActivation(req: Request, res: Response): Promise<void> {
   const id = req.member!.id;
   const body = req.body as { package?: 'Silver' | 'Gold'; gateway?: 'paystack' | 'flutterwave'; couponCode?: string };
-  const gateway = body.package != null ? PACKAGE_GATEWAY[body.package] : body.gateway;
-  if (!gateway) {
-    res.status(400).json({ error: 'Either package (Silver|Gold) or gateway (paystack|flutterwave) is required' });
-    return;
-  }
-  if (body.package != null && body.gateway != null && gateway !== body.gateway) {
-    res.status(400).json({
-      error: `Package ${body.package} uses ${gateway}; gateway must match or be omitted`,
-    });
-    return;
-  }
   const user = await knexInstance('users').where({ id }).first('status', 'activation_coupon');
   if (!user) {
     res.status(404).json({ error: 'User not found' });
@@ -56,21 +48,41 @@ export async function initiateActivation(req: Request, res: Response): Promise<v
   }
   const couponCode = (body.couponCode?.trim() || (user as { activation_coupon?: string }).activation_coupon)?.toUpperCase();
   let couponId: string | null = null;
+  let packageFromCoupon: 'Silver' | 'Gold' | null = null;
+  const hasPackageTypeCol = await knexInstance.schema.hasColumn('coupons', 'package_type');
   if (couponCode) {
-    const coupon = await knexInstance('coupons').where('code', couponCode).first('id', 'used_by');
+    const couponSelect = hasPackageTypeCol ? ['id', 'used_by', 'package_type'] : ['id', 'used_by'];
+    const coupon = await knexInstance('coupons').where('code', couponCode).first(couponSelect);
     if (!coupon || (coupon as { used_by: string | null }).used_by) {
       res.status(400).json({ error: 'Invalid or used coupon' });
       return;
     }
     couponId = (coupon as { id: string }).id;
+    if (hasPackageTypeCol && ((coupon as { package_type?: string }).package_type === 'Silver' || (coupon as { package_type?: string }).package_type === 'Gold')) {
+      packageFromCoupon = (coupon as { package_type: 'Silver' | 'Gold' }).package_type;
+    }
   }
+  const packageChosen = body.package ?? packageFromCoupon ?? null;
+  const gateway = packageChosen != null ? PACKAGE_GATEWAY[packageChosen] : body.gateway;
+  if (!gateway) {
+    res.status(400).json({ error: 'Either package (Silver|Gold) or gateway (paystack|flutterwave) is required, or provide a valid coupon' });
+    return;
+  }
+  if (body.package != null && body.gateway != null && gateway !== body.gateway) {
+    res.status(400).json({
+      error: `Package ${body.package} uses ${gateway}; gateway must match or be omitted`,
+    });
+    return;
+  }
+  const packageForAmount = packageChosen ?? 'Silver';
+  const amount = getRegistrationAmount(packageForAmount);
   const ref = 'act_' + id.slice(0, 8) + '_' + Date.now();
   let paymentUrl = 'https://checkout.paystack.com/fake?ref=' + ref;
   if (gateway === 'paystack' && process.env.PAYSTACK_SECRET_KEY) {
     const r = await fetch('https://api.paystack.co/transaction/initialize', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.PAYSTACK_SECRET_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: req.member!.email, amount: ACTIVATION_AMOUNT * 100, reference: ref }),
+      body: JSON.stringify({ email: req.member!.email, amount: amount * 100, reference: ref }),
     });
     const d = (await r.json()) as { data?: { authorization_url?: string } };
     if (d.data?.authorization_url) paymentUrl = d.data.authorization_url;
@@ -83,7 +95,7 @@ export async function initiateActivation(req: Request, res: Response): Promise<v
       },
       body: JSON.stringify({
         tx_ref: ref,
-        amount: ACTIVATION_AMOUNT,
+        amount,
         currency: 'NGN',
         redirect_url: process.env.FRONTEND_URL || '',
         customer: { email: req.member!.email },
@@ -94,14 +106,14 @@ export async function initiateActivation(req: Request, res: Response): Promise<v
   }
   await knexInstance('activation_payments').insert({
     user_id: id,
-    amount: ACTIVATION_AMOUNT,
+    amount,
     currency: 'NGN',
     gateway,
     gateway_ref: ref,
     status: 'pending',
     coupon_used: couponId,
   });
-  res.json({ paymentUrl, reference: ref });
+  res.json({ paymentUrl, reference: ref, amount, package: packageForAmount });
 }
 
 export async function getActivationStatus(req: Request, res: Response): Promise<void> {

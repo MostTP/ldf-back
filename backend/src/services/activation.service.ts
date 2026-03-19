@@ -1,8 +1,9 @@
 import type { Knex } from 'knex';
+import { REGISTRATION } from '../config/fees.js';
+import { splitAffiliateCashback } from './cashback.service.js';
 import { placeNewMember } from './matrix/placement.service.js';
 import { insertNotification } from './notification.service.js';
-
-const AFFILIATE_COMMISSION = 500;
+import { creditAdminWallet, isRecipientActiveForCommissions } from './subscriptionGuard.service.js';
 
 export interface CoreActivationParams {
   userId: string;
@@ -33,26 +34,63 @@ export async function coreActivation(params: CoreActivationParams, trx: Knex.Tra
 
   const sponsorRow = await trx('users')
     .where({ id: sponsorId })
-    .first('package_type', 'cashback_enabled', 'cashback_percentage');
+    .first('package_type', 'cashback_enabled', 'cashback_percentage', 'cashback_package', 'cashback_type');
   const sponsorPkg = (sponsorRow as { package_type?: string } | undefined)?.package_type ?? 'Silver';
-  const cashbackEnabled = (sponsorRow as { cashback_enabled?: boolean } | undefined)?.cashback_enabled === true;
-  const cashbackPct = Math.min(100, Math.max(0, Number((sponsorRow as { cashback_percentage?: string } | undefined)?.cashback_percentage ?? 0)));
-  const hasCashback = sponsorPkg === 'Gold' && cashbackEnabled && cashbackPct > 0;
+  const affiliateTotal = REGISTRATION[packageType].affiliate;
+  const sponsorSettings =
+    sponsorPkg === 'Gold'
+      ? {
+          cashback_enabled: (sponsorRow as { cashback_enabled?: boolean })?.cashback_enabled,
+          cashback_percentage: Number((sponsorRow as { cashback_percentage?: string })?.cashback_percentage ?? 0),
+          cashback_package: (sponsorRow as { cashback_package?: string })?.cashback_package,
+          cashback_type: (sponsorRow as { cashback_type?: string })?.cashback_type,
+        }
+      : {};
+  const { sponsorAmount, cashbackAmount } = splitAffiliateCashback(
+    affiliateTotal,
+    sponsorSettings,
+    'reg',
+    packageType
+  );
 
-  const cashbackAmount = hasCashback ? Math.round((AFFILIATE_COMMISSION * cashbackPct) / 100 * 100) / 100 : 0;
-  const sponsorAmount = Math.round((AFFILIATE_COMMISSION - cashbackAmount) * 100) / 100;
+  // Real-time guard: sponsor must be active + subscription valid to receive commissions.
+  const sponsorEligibilityRow = await trx('users')
+    .where({ id: sponsorId })
+    .first('status', 'subscription_active', 'subscription_expires_at');
+  const sponsorEligible = isRecipientActiveForCommissions({
+    status: (sponsorEligibilityRow as { status?: string } | undefined)?.status ?? 'active',
+    subscriptionActive: (sponsorEligibilityRow as { subscription_active?: boolean } | undefined)?.subscription_active,
+    subscriptionExpiresAt: (sponsorEligibilityRow as { subscription_expires_at?: string } | undefined)?.subscription_expires_at ?? null,
+  });
+
+  const sponsorPaid = sponsorEligible ? sponsorAmount : 0;
+  const redirected = sponsorEligible ? 0 : sponsorAmount;
 
   await trx('earnings_ledger').insert({
     user_id: sponsorId,
     type: 'AFFILIATE',
-    amount: sponsorAmount,
+    amount: sponsorPaid,
     source_user_id: userId,
-    description: 'Affiliate activation commission',
+    description: sponsorEligible ? 'Affiliate activation commission' : 'Affiliate commission redirected (inactive/expired)',
   });
-  await trx('available_balance').where({ user_id: sponsorId }).increment('balance', sponsorAmount);
+  if (sponsorPaid > 0) {
+    await trx('available_balance').where({ user_id: sponsorId }).increment('balance', sponsorPaid);
+  }
   const hasWallets = await trx.schema.hasTable('wallets');
   if (hasWallets) {
-    await trx('wallets').where({ user_id: sponsorId }).increment('affiliate_income', sponsorAmount);
+    await trx('wallets').where({ user_id: sponsorId }).increment('affiliate_income', sponsorPaid);
+    if (redirected > 0) {
+      await trx('wallets').where({ user_id: sponsorId }).increment('lost_earnings', redirected);
+    }
+  }
+  if (redirected > 0) {
+    await creditAdminWallet({
+      amount: redirected,
+      type: 'AFFILIATE',
+      sourceUserId: userId,
+      description: 'Affiliate commission redirected (inactive/expired)',
+      trx,
+    });
   }
 
   if (cashbackAmount > 0) {
@@ -81,6 +119,25 @@ export async function coreActivation(params: CoreActivationParams, trx: Knex.Tra
 
   await trx('global_pool_memberships').insert({ user_id: userId });
 
+  const globalPoolAmount = REGISTRATION[packageType].globalPool;
+  const operationAmount = REGISTRATION[packageType].operation;
+  const hasGlobalPoolLedger = await trx.schema.hasTable('global_pool_ledger');
+  if (hasGlobalPoolLedger && globalPoolAmount > 0) {
+    await trx('global_pool_ledger').insert({
+      amount: globalPoolAmount,
+      description: `Registration ${packageType} (user ${userId})`,
+    });
+  }
+  if (operationAmount > 0) {
+    await creditAdminWallet({
+      amount: operationAmount,
+      type: 'OPERATION',
+      sourceUserId: userId,
+      description: `Registration ${packageType} operation fee`,
+      trx,
+    });
+  }
+
   await insertNotification(
     userId,
     'ACTIVATION',
@@ -94,8 +151,10 @@ export async function coreActivation(params: CoreActivationParams, trx: Knex.Tra
     sponsorId,
     'NEW_REFERRAL',
     'New Referral Activated',
-    `Your referral has activated their account. ₦${sponsorAmount} commission credited.`,
-    { amount: sponsorAmount },
+    sponsorEligible
+      ? `Your referral has activated their account. ₦${sponsorPaid} commission credited.`
+      : `Your referral activated, but your account is inactive/expired so your commission was not credited.`,
+    { amount: sponsorPaid, redirected },
     trx
   );
 
@@ -126,9 +185,18 @@ export async function completeActivation(
   if (!sponsorId) throw new Error('No sponsor for matrix placement');
 
   const payment = await trx('activation_payments').where({ gateway_ref: gatewayRef }).first('id', 'coupon_used', 'gateway');
-  const gateway = (payment as { gateway?: string } | undefined)?.gateway;
-  const packageType = gateway === 'flutterwave' ? 'Gold' : 'Silver';
   const couponId = payment ? (payment as { coupon_used: string | null }).coupon_used : null;
+  const gateway = (payment as { gateway?: string } | undefined)?.gateway;
+
+  let packageType: 'Silver' | 'Gold' = gateway === 'flutterwave' ? 'Gold' : 'Silver';
+  if (couponId) {
+    const hasPackageTypeCol = await trx.schema.hasColumn('coupons', 'package_type');
+    if (hasPackageTypeCol) {
+      const coupon = await trx('coupons').where({ id: couponId }).first('package_type');
+      const pkg = (coupon as { package_type?: string } | undefined)?.package_type;
+      if (pkg === 'Silver' || pkg === 'Gold') packageType = pkg;
+    }
+  }
 
   if (payment) {
     await trx('activation_payments')

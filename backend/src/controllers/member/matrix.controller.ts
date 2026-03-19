@@ -124,8 +124,9 @@ export async function getDownline(req: Request, res: Response): Promise<void> {
 export async function getStats(req: Request, res: Response): Promise<void> {
   const id = req.member!.id;
 
-  const [totalRow, subtreeRow, byLevel, byPlacement, matrixEarnings, cyclesRow] = await Promise.all([
-    knexInstance('matrix_nodes').where({ sponsor_id: id, status: 'active' }).count('id as count').first(),
+  // Full subtree = everyone under this user (parent_id chain), not just sponsor_id = id (direct refs).
+  const [subtreeRow, byLevelRows, byPlacement, matrixEarnings, cyclesRow, referralSubtreeRow] = await Promise.all([
+    // Filled spots across full subtree (L1-L5)
     knexInstance.raw(
       `
       WITH RECURSIVE subtree AS (
@@ -139,21 +140,53 @@ export async function getStats(req: Request, res: Response): Promise<void> {
       `,
       [id]
     ).then((r) => (r.rows as { count: number }[])[0]),
-    knexInstance('matrix_nodes').where({ sponsor_id: id, status: 'active' }).select('level').count('id as count').groupBy('level'),
-    knexInstance('matrix_nodes').where({ sponsor_id: id, status: 'active' }).select('placement_type').count('id as count').groupBy('placement_type'),
+    knexInstance.raw(
+      `
+      WITH RECURSIVE subtree AS (
+        SELECT user_id, 1 AS depth FROM matrix_nodes WHERE parent_id = ? AND status = 'active'
+        UNION ALL
+        SELECT m.user_id, s.depth + 1 FROM matrix_nodes m
+        INNER JOIN subtree s ON m.parent_id = s.user_id
+        WHERE m.status = 'active' AND s.depth < 5
+      )
+      SELECT depth AS level, COUNT(*)::int AS count FROM subtree GROUP BY depth ORDER BY depth
+      `,
+      [id]
+    ).then((r) => r.rows as { level: number; count: number }[]),
+    knexInstance.raw(
+      `
+      WITH RECURSIVE subtree AS (
+        SELECT user_id FROM matrix_nodes WHERE parent_id = ? AND status = 'active'
+        UNION ALL
+        SELECT m.user_id FROM matrix_nodes m
+        INNER JOIN subtree s ON m.parent_id = s.user_id
+        WHERE m.status = 'active'
+      )
+      SELECT m.placement_type, COUNT(*)::int AS count
+      FROM matrix_nodes m
+      INNER JOIN subtree s ON m.user_id = s.user_id
+      WHERE m.status = 'active'
+      GROUP BY m.placement_type
+      `,
+      [id]
+    ).then((r) => r.rows as { placement_type: string; count: number }[]),
     knexInstance('earnings_ledger').where({ user_id: id, type: 'MATRIX' }).sum('amount as total').first(),
     knexInstance('earnings_ledger').where({ user_id: id, type: 'MATRIX' }).whereRaw("description LIKE '%cycle%'").count('id as count').first(),
+    // Total downline must match `/api/member/profile/referrals`:
+    // That endpoint lists direct referrals where `users.referred_by = me` (L1 only).
+    knexInstance('users').where({ referred_by: id }).count('id as count').first(),
   ]);
+
   const byLevelMap: Record<string, number> = {};
-  for (const r of byLevel as { level: number; count: string }[]) {
+  for (const r of byLevelRows) {
     byLevelMap[String(r.level)] = Number(r.count);
   }
   const byPlacementMap: Record<string, number> = {};
-  for (const r of byPlacement as { placement_type: string; count: string }[]) {
+  for (const r of byPlacement) {
     byPlacementMap[r.placement_type] = Number(r.count);
   }
-  const totalDownline = Number(totalRow?.count ?? 0);
   const filledSpots = Number(subtreeRow?.count ?? 0);
+  const totalDownline = Number((referralSubtreeRow as { count?: string | number } | undefined)?.count ?? 0);
   res.json({
     totalDownline,
     filledSpots,
