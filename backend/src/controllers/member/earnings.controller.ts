@@ -81,7 +81,9 @@ export async function getGrowth(req: Request, res: Response): Promise<void> {
   // Aggregate earnings per day over the last N days.
   const rows = await knexInstance('earnings_ledger')
     .where({ user_id: id })
-    .andWhere('created_at', '>=', knexInstance.raw('NOW() - INTERVAL ? DAY', [days - 1]))
+    // Postgres does not allow `INTERVAL $n DAY` parametrization.
+    // Use: NOW() - (INTERVAL '1 day' * $n)
+    .andWhere('created_at', '>=', knexInstance.raw("NOW() - INTERVAL '1 day' * ?", [days - 1]))
     .select(knexInstance.raw('DATE(created_at) as day'))
     .sum('amount as total')
     .groupByRaw('DATE(created_at)')
